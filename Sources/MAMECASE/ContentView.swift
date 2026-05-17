@@ -40,7 +40,7 @@ struct ContentView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Toggle(isOn: $showMissing) {
-                    Label("Show Missing Files", systemImage: "text.page")
+                    Label("Show Missing Files", systemImage: "receipt")
                 }
                 .toggleStyle(.button)
                 .help("Show entries you don't have a ROM for")
@@ -96,18 +96,16 @@ struct ContentView: View {
 
     private var sidebar: some View {
         List(selection: $selection) {
-            Section("Systems") {
-                ForEach(systems) { node in
-                    HStack {
-                        Text(node.displayName)
-                            .lineLimit(1)
-                        Spacer()
-                        Text("\(node.count)")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
-                    .tag(Optional(node.id))
+            ForEach(systems) { node in
+                HStack {
+                    Text(node.displayName)
+                        .lineLimit(1)
+                    Spacer()
+                    Text("\(node.count)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
                 }
+                .tag(Optional(node.id))
             }
         }
         .navigationTitle("Mamecase")
