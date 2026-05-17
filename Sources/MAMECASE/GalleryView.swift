@@ -30,8 +30,8 @@ struct GalleryView: View {
             LazyVGrid(columns: columns, spacing: 16) {
                 ForEach(entries) { entry in
                     EntryTile(entry: entry,
-                              snapshot: library.snapshotURL(for: entry),
-                              cover: library.coverURL(for: entry),
+                              snapURL: library.mediaURL(for: entry, kind: .snap),
+                              coverURL: library.mediaURL(for: entry, kind: .coverArt),
                               selected: selection.contains(entry.id))
                         .contentShape(Rectangle())
                         .onTapGesture(count: 2) {
@@ -49,7 +49,7 @@ struct GalleryView: View {
                                 }
                             }
                             Divider()
-                            if let snap = library.snapshotURL(for: entry) {
+                            if let snap = library.mediaURL(for: entry, kind: .snap) {
                                 Button("Reveal Snapshot in Finder") {
                                     NSWorkspace.shared.activateFileViewerSelecting([snap])
                                 }
@@ -132,8 +132,8 @@ struct GalleryView: View {
 
 private struct EntryTile: View {
     let entry: Entry
-    let snapshot: URL?
-    let cover: URL?
+    let snapURL: URL?
+    let coverURL: URL?
     let selected: Bool
 
     @AppStorage("mediaKind") private var mediaKind: MediaKind = .coverArt
@@ -194,11 +194,11 @@ private struct EntryTile: View {
     private func preferredImage() -> NSImage? {
         switch mediaKind {
         case .coverArt:
-            if let cover, let img = NSImage(contentsOf: cover) { return img }
-            if let snapshot, let img = NSImage(contentsOf: snapshot) { return img }
+            if let coverURL, let img = NSImage(contentsOf: coverURL) { return img }
+            if let snapURL, let img = NSImage(contentsOf: snapURL) { return img }
         case .snap:
-            if let snapshot, let img = NSImage(contentsOf: snapshot) { return img }
-            if let cover, let img = NSImage(contentsOf: cover) { return img }
+            if let snapURL, let img = NSImage(contentsOf: snapURL) { return img }
+            if let coverURL, let img = NSImage(contentsOf: coverURL) { return img }
         }
         return nil
     }

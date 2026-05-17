@@ -238,51 +238,11 @@ final class Library: ObservableObject {
         }
     }
 
-    func snapshotURL(for entry: Entry) -> URL? {
+    /// Returns a local file URL for the given media kind, or nil if nothing
+    /// is available. Delegates to `MediaProvider`.
+    func mediaURL(for entry: Entry, kind: MediaKind) -> URL? {
         guard let cfg = config else { return nil }
-        let fm = FileManager.default
-        let subdir: String
-        switch entry.kind {
-        case .arcade: subdir = entry.shortName
-        case .software(let sys): subdir = "\(sys)/\(entry.shortName)"
-        }
-        for snap in cfg.snapPaths {
-            let candidates = [
-                snap.appendingPathComponent("\(subdir).png"),
-                snap.appendingPathComponent(subdir).appendingPathComponent("0000.png"),
-                snap.appendingPathComponent(subdir).appendingPathComponent("snap.png")
-            ]
-            for c in candidates where fm.fileExists(atPath: c.path) {
-                return c
-            }
-        }
-        return nil
-    }
-
-    /// Resolves "cover art" for an entry, the abstraction being:
-    ///   - arcade   → flyer (`flyers_directory/<short>.{png,jpg,jpeg}`)
-    ///   - software → user-supplied cover (`covers/<list>/<short>.{png,jpg,jpeg}`)
-    func coverURL(for entry: Entry) -> URL? {
-        guard let cfg = config else { return nil }
-        let fm = FileManager.default
-        let exts = ["png", "jpg", "jpeg"]
-        let dirs: [URL]
-        let basename: String
-        switch entry.kind {
-        case .arcade:
-            dirs = cfg.flyerPaths
-            basename = entry.shortName
-        case .software(let sys):
-            dirs = cfg.coverPaths
-            basename = "\(sys)/\(entry.shortName)"
-        }
-        for dir in dirs {
-            for ext in exts {
-                let url = dir.appendingPathComponent("\(basename).\(ext)")
-                if fm.fileExists(atPath: url.path) { return url }
-            }
-        }
-        return nil
+        return MediaProvider.url(for: entry, kind: kind, config: cfg)
     }
 
     func launch(_ entry: Entry) {
