@@ -32,6 +32,7 @@ enum MameConfigLoader {
         let ctrlrPaths = resolvePaths(values["ctrlrpath"] ?? "ctrlr", base: mameHome)
         let flyerPaths = resolvePaths(values["flyers_directory"] ?? "flyers", base: mameHome)
         let shaderPaths = resolvePaths(values["glsl_shader_path"] ?? "glsl", base: mameHome)
+        let historyPaths = resolvePaths(values["historypath"] ?? "history", base: mameHome)
         // MAMECASE convention: no MAME standard for "covers"; use a single
         // directory under mameHome unless we surface a setting later.
         let coverPaths = [mameHome.appendingPathComponent("covers", isDirectory: true)]
@@ -48,6 +49,7 @@ enum MameConfigLoader {
             flyerPaths: flyerPaths,
             coverPaths: coverPaths,
             shaderPaths: shaderPaths,
+            historyPaths: historyPaths,
             executable: executable
         )
     }

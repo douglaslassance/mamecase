@@ -130,6 +130,8 @@ struct MameConfig {
     let coverPaths: [URL]
     /// resolved shader directory (mame's `glsl_shader_path`, defaults to `glsl`)
     let shaderPaths: [URL]
+    /// resolved history-dat directory (mame's `historypath`, defaults to `history`)
+    let historyPaths: [URL]
     /// path to mame executable
     let executable: String
 }

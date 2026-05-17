@@ -7,6 +7,7 @@ struct ContentView: View {
     @AppStorage("mediaKind") private var mediaKind: MediaKind = .coverArt
     @AppStorage("gridItemSize") private var gridItemSize: Double = 180
     @AppStorage("showStatusBar") private var showStatusBar: Bool = true
+    @AppStorage("showInspector") private var showInspector: Bool = false
     @AppStorage("selectedSystemID") private var persistedSystemID: String = ""
     @State private var selection: SystemNode.ID?
     @State private var entrySelection: Set<Entry.ID> = []
@@ -91,6 +92,10 @@ struct ContentView: View {
         )
     }
 
+    private var singleSelectedEntry: Entry? {
+        selectedEntries.count == 1 ? selectedEntries[0] : nil
+    }
+
     var body: some View {
         NavigationSplitView {
             sidebar
@@ -104,6 +109,18 @@ struct ContentView: View {
                                   verifications: library.verifications,
                                   gridItemSize: $gridItemSize)
                     }
+                }
+                .inspector(isPresented: $showInspector) {
+                    EntryInspector(entry: singleSelectedEntry)
+                        .inspectorColumnWidth(min: 240, ideal: 320, max: 480)
+                        .toolbar {
+                            Spacer()
+                            Button {
+                                showInspector.toggle()
+                            } label: {
+                                Label("Inspector", systemImage: "sidebar.right")
+                            }
+                        }
                 }
         }
         .toolbar {

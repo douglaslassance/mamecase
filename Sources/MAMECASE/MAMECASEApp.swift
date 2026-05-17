@@ -6,6 +6,7 @@ struct MAMECASEApp: App {
     @StateObject private var library = Library()
     @StateObject private var settings = AppSettings()
     @AppStorage("showStatusBar") private var showStatusBar: Bool = true
+    @AppStorage("showInspector") private var showInspector: Bool = false
 
     init() {
         // Without a proper .app bundle, an SPM executable defaults to a
@@ -29,6 +30,8 @@ struct MAMECASEApp: App {
         .windowStyle(.titleBar)
         .commands {
             CommandMenu("View") {
+                Toggle("Inspector", isOn: $showInspector)
+                    .keyboardShortcut("i", modifiers: [.command, .option])
                 Toggle("Status Bar", isOn: $showStatusBar)
                     .keyboardShortcut("/", modifiers: [.command, .shift])
                 Divider()

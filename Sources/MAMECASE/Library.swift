@@ -320,6 +320,13 @@ final class Library: ObservableObject {
         return MediaProvider.url(for: entry, kind: kind, config: cfg)
     }
 
+    /// Look up the history/dat text for an entry. First call parses the
+    /// XML in the background; subsequent calls are fast dictionary hits.
+    func historyText(for entry: Entry) async -> String? {
+        guard let cfg = config else { return nil }
+        return await HistoryProvider.shared.text(for: entry, historyPaths: cfg.historyPaths)
+    }
+
     /// Kick off a one-time bulk extraction for `kind` if archives exist on
     /// disk. Cheap to call from many tiles; the actor inside MediaProvider
     /// deduplicates work per archive.
