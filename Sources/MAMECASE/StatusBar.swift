@@ -9,22 +9,33 @@ struct StatusBar: View {
     let verifications: [Entry.ID: RomStatus]
     @Binding var gridItemSize: Double
 
+    private static let sliderWidth: CGFloat = 160
+
     var body: some View {
-        HStack(spacing: 8) {
-            if let status = selectedStatus {
-                Image(systemName: status.systemImage)
-                    .foregroundStyle(status.tint)
-                    .help("ROM status: \(status.label)")
-            }
-            Text(leadingText)
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
+        HStack(spacing: 0) {
+            // Invisible column matching the slider's width on the trailing
+            // side so the centered info text stays centered within the bar.
+            Color.clear
+                .frame(width: Self.sliderWidth, height: 1)
+
             Spacer(minLength: 0)
+            HStack(spacing: 6) {
+                if let status = selectedStatus {
+                    Image(systemName: status.systemImage)
+                        .foregroundStyle(status.tint)
+                        .help("ROM status: \(status.label)")
+                }
+                Text(leadingText)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer(minLength: 0)
+
             Slider(value: $gridItemSize, in: 120...320)
                 .controlSize(.small)
-                .frame(width: 160)
+                .frame(width: Self.sliderWidth)
                 .help("Tile size")
         }
         .padding(.horizontal, 12)

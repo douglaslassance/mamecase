@@ -95,6 +95,15 @@ struct ContentView: View {
             sidebar
         } detail: {
             detail
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if showStatusBar {
+                        StatusBar(selectedEntries: selectedEntries,
+                                  totalCount: currentNode?.count ?? 0,
+                                  systemName: currentNode?.displayName,
+                                  verifications: library.verifications,
+                                  gridItemSize: $gridItemSize)
+                    }
+                }
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -153,15 +162,6 @@ struct ContentView: View {
                 }
                 .help("GLSL shader override (per system, slot 1)")
                 .disabled(library.shaderSchemes.isEmpty || selection == nil)
-            }
-        }
-        .safeAreaInset(edge: .bottom) {
-            if showStatusBar {
-                StatusBar(selectedEntries: selectedEntries,
-                          totalCount: currentNode?.count ?? 0,
-                          systemName: currentNode?.displayName,
-                          verifications: library.verifications,
-                          gridItemSize: $gridItemSize)
             }
         }
         .alert("Error",
