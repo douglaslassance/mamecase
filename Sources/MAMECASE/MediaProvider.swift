@@ -49,20 +49,35 @@ actor MediaProvider {
         cacheDir(for: kind).appendingPathComponent("\(MediaProvider.basename(for: entry)).png")
     }
 
-    /// Fetch the entry's media for `kind` from the Libretro thumbnails
-    /// repo. Caches the result at the same path used by archive-extracted
-    /// media, so subsequent synchronous lookups pick it up automatically.
-    /// Software entries currently have no online source (handled later by
-    /// OpenVGDB) — this call returns nil for them.
+    /// Fetch the entry's media for `kind` online.
+    ///   - Arcade: libretro-thumbnails MAME repo (works for both
+    ///     `coverArt` → flyer/boxart, and `snap` → in-game shot).
+    ///   - Software: OpenVGDB lookup for `coverArt`. `snap` is unsupported
+    ///     (no comparable corpus) and returns nil.
+    /// Caches successful downloads at the same path used by
+    /// archive-extracted media, so subsequent synchronous lookups pick it
+    /// up automatically.
     func fetchOnline(for entry: Entry, kind: MediaKind) async -> URL? {
-        guard case .arcade = entry.kind else { return nil }
         let key = "\(kind.rawValue)/\(MediaProvider.basename(for: entry))"
         let dest = cacheURL(for: entry, kind: kind)
         if FileManager.default.fileExists(atPath: dest.path) { return dest }
         if onlineMisses.contains(key) { return nil }
         if let task = onlineInFlight[key] { return await task.value }
 
-        let candidates = libretroCandidates(for: entry, kind: kind)
+        let candidates: [URL]
+        switch entry.kind {
+        case .arcade:
+            candidates = libretroCandidates(for: entry, kind: kind)
+        case .software:
+            guard kind == .coverArt,
+                  let url = await OpenVGDB.shared.coverURL(forTitle: entry.displayName)
+            else {
+                onlineMisses.insert(key)
+                return nil
+            }
+            candidates = [url]
+        }
+
         let session = self.session
         let task = Task.detached(priority: .utility) { () -> URL? in
             for url in candidates {
