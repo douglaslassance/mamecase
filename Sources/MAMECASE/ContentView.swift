@@ -68,6 +68,7 @@ struct ContentView: View {
                             }
                         }
                     }
+                    .pickerStyle(.inline)
                 } label: {
                     Label(controllerDisplayName, systemImage: "gamecontroller")
                 }
