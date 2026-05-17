@@ -6,10 +6,16 @@ struct StatusBar: View {
     let selectedEntries: [Entry]
     let totalCount: Int
     let systemName: String?
+    let verifications: [Entry.ID: RomStatus]
     @Binding var gridItemSize: Double
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
+            if let status = selectedStatus {
+                Image(systemName: status.systemImage)
+                    .foregroundStyle(status.tint)
+                    .help("ROM status: \(status.label)")
+            }
             Text(leadingText)
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
@@ -32,6 +38,11 @@ struct StatusBar: View {
         .frame(maxWidth: .infinity, minHeight: 28)
         .background(.bar)
         .overlay(alignment: .top) { Divider() }
+    }
+
+    private var selectedStatus: RomStatus? {
+        guard selectedEntries.count == 1 else { return nil }
+        return verifications[selectedEntries[0].id]
     }
 
     private var leadingText: String {

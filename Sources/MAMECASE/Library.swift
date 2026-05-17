@@ -27,6 +27,8 @@ final class Library: ObservableObject {
     @Published var arcadeStatus: String?
     @Published var presence: PresenceIndex = .empty
     @Published var controllerSchemes: [String] = []
+    @Published var verifications: [Entry.ID: RomStatus] = [:]
+    @Published var verifyingIDs: Set<Entry.ID> = []
 
     private var settingsCancellables: Set<AnyCancellable> = []
 
@@ -263,6 +265,29 @@ final class Library: ObservableObject {
         let all = entries(for: system, hideMissing: false)
         for entry in all where ids.contains(entry.id) {
             launch(entry)
+        }
+    }
+
+    // MARK: - ROM verification
+
+    /// Run MAME's audit for one entry and record the result.
+    func verify(_ entry: Entry) async {
+        guard let cfg = config else { return }
+        verifyingIDs.insert(entry.id)
+        defer { verifyingIDs.remove(entry.id) }
+        let status = await RomVerifier.verify(entry: entry,
+                                              executable: cfg.executable,
+                                              romPaths: cfg.romPaths)
+        verifications[entry.id] = status
+    }
+
+    /// Verify every selected entry sequentially. Sequential to avoid
+    /// spawning N MAME processes in parallel; we can introduce a small
+    /// concurrency cap later if needed.
+    func verify(ids: Set<Entry.ID>, in system: SystemNode) async {
+        let targets = entries(for: system, hideMissing: false).filter { ids.contains($0.id) }
+        for entry in targets {
+            await verify(entry)
         }
     }
 }

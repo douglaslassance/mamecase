@@ -32,6 +32,8 @@ struct GalleryView: View {
                     EntryTile(entry: entry,
                               snapURL: library.mediaURL(for: entry, kind: .snap),
                               coverURL: library.mediaURL(for: entry, kind: .coverArt),
+                              status: library.verifications[entry.id],
+                              verifying: library.verifyingIDs.contains(entry.id),
                               selected: selection.contains(entry.id))
                         .contentShape(Rectangle())
                         .overlay(
@@ -51,6 +53,16 @@ struct GalleryView: View {
                                     library.launch(entry)
                                 }
                             }
+                            Button(verifyMenuTitle(for: entry)) {
+                                Task {
+                                    if selection.contains(entry.id), selection.count > 1 {
+                                        await library.verify(ids: selection, in: system)
+                                    } else {
+                                        await library.verify(entry)
+                                    }
+                                }
+                            }
+                            .disabled(library.config == nil)
                             Divider()
                             if let snap = library.mediaURL(for: entry, kind: .snap) {
                                 Button("Reveal Snapshot in Finder") {
@@ -97,6 +109,11 @@ struct GalleryView: View {
         }
     }
 
+    private func verifyMenuTitle(for entry: Entry) -> String {
+        let count = (selection.contains(entry.id) && selection.count > 1) ? selection.count : 1
+        return count > 1 ? "Verify \(count) ROMs" : "Verify ROM"
+    }
+
     private var emptyHint: String {
         switch system.kind {
         case .arcade where library.arcadeEntries.isEmpty:
@@ -137,6 +154,8 @@ private struct EntryTile: View {
     let entry: Entry
     let snapURL: URL?
     let coverURL: URL?
+    let status: RomStatus?
+    let verifying: Bool
     let selected: Bool
 
     @AppStorage("mediaKind") private var mediaKind: MediaKind = .coverArt
@@ -155,6 +174,23 @@ private struct EntryTile: View {
                     Image(systemName: "gamecontroller.fill")
                         .font(.largeTitle)
                         .foregroundStyle(.tertiary)
+                }
+                if verifying {
+                    ProgressView()
+                        .controlSize(.small)
+                        .padding(6)
+                        .background(.thinMaterial, in: Circle())
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                        .padding(6)
+                } else if let status {
+                    Image(systemName: status.systemImage)
+                        .font(.callout)
+                        .foregroundStyle(status.tint)
+                        .padding(4)
+                        .background(.thinMaterial, in: Circle())
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                        .padding(6)
+                        .help("ROM status: \(status.label)")
                 }
             }
             .aspectRatio(4.0/3.0, contentMode: .fit)

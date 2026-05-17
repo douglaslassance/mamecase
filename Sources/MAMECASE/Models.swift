@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 enum EntryKind: Hashable {
     case arcade
@@ -61,6 +62,51 @@ enum MediaKind: String, CaseIterable, Identifiable {
         switch self {
         case .coverArt: return "rectangle.portrait.on.rectangle.portrait"
         case .snap: return "photo"
+        }
+    }
+}
+
+/// Result of running `mame -verifyroms` / `-verifysoftware` against an entry.
+enum RomStatus: String, Codable {
+    /// Every required file present and matches expected checksum.
+    case good
+    /// Playable, but some optional files are missing or have wrong CRCs.
+    case bestAvailable
+    /// Missing critical files or wrong checksums.
+    case bad
+    /// Romset is absent entirely from the rompath.
+    case notFound
+    /// Verification ran but the output couldn't be parsed (or the process
+    /// failed for unrelated reasons).
+    case error
+
+    var label: String {
+        switch self {
+        case .good: return "Good"
+        case .bestAvailable: return "Best Available"
+        case .bad: return "Bad"
+        case .notFound: return "Not Found"
+        case .error: return "Error"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .good: return "checkmark.circle.fill"
+        case .bestAvailable: return "exclamationmark.triangle.fill"
+        case .bad: return "xmark.octagon.fill"
+        case .notFound: return "questionmark.circle.fill"
+        case .error: return "exclamationmark.circle.fill"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .good: return .green
+        case .bestAvailable: return .yellow
+        case .bad: return .red
+        case .notFound: return .gray
+        case .error: return .orange
         }
     }
 }

@@ -81,6 +81,7 @@ struct ContentView: View {
                 StatusBar(selectedEntries: selectedEntries,
                           totalCount: currentNode?.count ?? 0,
                           systemName: currentNode?.displayName,
+                          verifications: library.verifications,
                           gridItemSize: $gridItemSize)
             }
         }
