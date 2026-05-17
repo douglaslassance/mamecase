@@ -413,9 +413,11 @@ final class Library: ObservableObject {
         }
     }
 
-    /// Verify every arcade and software entry, using the cache to skip
-    /// ROMs whose underlying file hasn't changed since the last audit.
-    /// Sequential: a `mame -verifyroms` invocation per uncached entry.
+    /// Verify every arcade and software entry. The cache is consulted
+    /// first so entries with an unchanged ROM file are accepted instantly.
+    /// The remainder are dispatched through a `TaskGroup` with a small
+    /// concurrency cap so we don't spawn thousands of MAME processes at
+    /// once — but we still saturate cores.
     func verifyAll() async {
         guard let cfg = config, !isVerifyingAll else { return }
         isVerifyingAll = true
@@ -427,33 +429,67 @@ final class Library: ObservableObject {
         var all: [Entry] = arcadeEntries
         for list in softwareLists { all.append(contentsOf: list.entries) }
         let total = all.count
-        var done = 0
-        var changed = false
-        arcadeStatus = "Verifying ROMs… 0/\(total)"
 
+        // First pass: apply cache hits, collect misses.
+        var pending: [Entry] = []
+        pending.reserveCapacity(total)
         for entry in all {
             if let cached = VerificationCache.freshStatus(for: entry,
                                                           romPaths: cfg.romPaths,
                                                           cache: verificationCache) {
                 verifications[entry.id] = cached
             } else {
+                pending.append(entry)
+            }
+        }
+
+        var done = total - pending.count
+        arcadeStatus = "Verifying ROMs… \(done)/\(total)"
+        guard !pending.isEmpty else { return }
+
+        let exe = cfg.executable
+        let romPaths = cfg.romPaths
+        let cap = 4
+
+        await withTaskGroup(of: (Entry, RomStatus).self) { group in
+            var next = 0
+            // Seed initial batch.
+            while next < min(cap, pending.count) {
+                let entry = pending[next]
                 verifyingIDs.insert(entry.id)
-                let status = await RomVerifier.verify(entry: entry,
-                                                      executable: cfg.executable,
-                                                      romPaths: cfg.romPaths)
+                group.addTask {
+                    let status = await RomVerifier.verify(entry: entry,
+                                                          executable: exe,
+                                                          romPaths: romPaths)
+                    return (entry, status)
+                }
+                next += 1
+            }
+            // Drain + refill.
+            while let (entry, status) = await group.next() {
                 verifyingIDs.remove(entry.id)
                 verifications[entry.id] = status
                 verificationCache[entry.id] = VerificationCache.makeRecord(status: status,
                                                                            for: entry,
-                                                                           romPaths: cfg.romPaths)
-                changed = true
-            }
-            done += 1
-            if done % 25 == 0 || done == total {
-                arcadeStatus = "Verifying ROMs… \(done)/\(total)"
+                                                                           romPaths: romPaths)
+                done += 1
+                if done % 25 == 0 || done == total {
+                    arcadeStatus = "Verifying ROMs… \(done)/\(total)"
+                }
+                if next < pending.count {
+                    let nextEntry = pending[next]
+                    verifyingIDs.insert(nextEntry.id)
+                    group.addTask {
+                        let status = await RomVerifier.verify(entry: nextEntry,
+                                                              executable: exe,
+                                                              romPaths: romPaths)
+                        return (nextEntry, status)
+                    }
+                    next += 1
+                }
             }
         }
-        if changed { VerificationCache.save(verificationCache) }
+        VerificationCache.save(verificationCache)
     }
 
     // MARK: - ROM downloads

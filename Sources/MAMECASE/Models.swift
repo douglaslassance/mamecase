@@ -1,12 +1,12 @@
 import Foundation
 import SwiftUI
 
-enum EntryKind: Hashable {
+enum EntryKind: Hashable, Sendable {
     case arcade
     case software(system: String)
 }
 
-struct Entry: Identifiable, Hashable {
+struct Entry: Identifiable, Hashable, Sendable {
     let kind: EntryKind
     let shortName: String
     let displayName: String
@@ -67,7 +67,7 @@ enum MediaKind: String, CaseIterable, Identifiable {
 }
 
 /// Result of running `mame -verifyroms` / `-verifysoftware` against an entry.
-enum RomStatus: String, Codable {
+enum RomStatus: String, Codable, Sendable {
     /// Every required file present and matches expected checksum.
     case good
     /// Playable, but some optional files are missing or have wrong CRCs.
