@@ -6,9 +6,9 @@ struct GalleryView: View {
     let system: SystemNode
     let hideMissing: Bool
     @Binding var searchText: String
+    @Binding var selection: Set<Entry.ID>
 
     @AppStorage("gridItemSize") private var gridItemSize: Double = 180
-    @State private var selection: Set<Entry.ID> = []
     @State private var anchor: Entry.ID?
     @FocusState private var focused: Bool
 

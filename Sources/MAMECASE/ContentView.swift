@@ -6,10 +6,30 @@ struct ContentView: View {
     @AppStorage("controllerScheme") private var controllerScheme: String = ""
     @AppStorage("mediaKind") private var mediaKind: MediaKind = .coverArt
     @AppStorage("gridItemSize") private var gridItemSize: Double = 180
+    @AppStorage("showStatusBar") private var showStatusBar: Bool = true
     @State private var selection: SystemNode.ID?
+    @State private var entrySelection: Set<Entry.ID> = []
     @State private var searchText: String = ""
 
     private var systems: [SystemNode] { library.systems(hideMissing: !showMissing) }
+
+    private var currentNode: SystemNode? {
+        guard let id = selection else { return nil }
+        return systems.first(where: { $0.id == id })
+    }
+
+    /// Resolve currently-selected entry IDs to full `Entry` records using
+    /// the visible entries of the current system. O(visible entries) and
+    /// only called when the status bar renders.
+    private var selectedEntries: [Entry] {
+        guard let node = currentNode, !entrySelection.isEmpty else { return [] }
+        let all = library.entries(for: node, hideMissing: !showMissing)
+        return all.filter { entrySelection.contains($0.id) }
+    }
+
+    private var controllerDisplayName: String {
+        controllerScheme.isEmpty ? "Default" : controllerScheme
+    }
 
     var body: some View {
         NavigationSplitView {
@@ -21,7 +41,7 @@ struct ContentView: View {
             ToolbarItem(placement: .primaryAction) {
                 Toggle(isOn: $showMissing) {
                     Label("Show Missing Files",
-                          systemImage: showMissing ? "eye" : "eye.slash")
+                          systemImage: "questionmark.square.dashed")
                 }
                 .toggleStyle(.button)
                 .help("Show entries you don't have a ROM for")
@@ -39,38 +59,29 @@ struct ContentView: View {
                 .help("Media displayed in the gallery")
             }
             ToolbarItem(placement: .primaryAction) {
-                Picker("Controller profile", selection: $controllerScheme) {
-                    Label("Default", systemImage: "gamecontroller").tag("")
-                    if !library.controllerSchemes.isEmpty {
-                        Divider()
-                        ForEach(library.controllerSchemes, id: \.self) { name in
-                            Label(name, systemImage: "gamecontroller").tag(name)
+                Menu {
+                    Picker("Controller profile", selection: $controllerScheme) {
+                        Label("Default", systemImage: "gamecontroller").tag("")
+                        if !library.controllerSchemes.isEmpty {
+                            Divider()
+                            ForEach(library.controllerSchemes, id: \.self) { name in
+                                Label(name, systemImage: "gamecontroller").tag(name)
+                            }
                         }
                     }
+                } label: {
+                    Label(controllerDisplayName, systemImage: "gamecontroller")
                 }
-                .pickerStyle(.menu)
                 .help("MAME -ctrlr profile")
                 .disabled(library.controllerSchemes.isEmpty)
             }
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    Task { await library.indexArcade() }
-                } label: {
-                    Label(library.arcadeIndexing ? "Indexing…" : "Index Arcade",
-                          systemImage: "arrow.clockwise")
-                }
-                .disabled(library.arcadeIndexing || library.config == nil)
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Slider(value: $gridItemSize, in: 120...320) {
-                    Text("Tile size")
-                } minimumValueLabel: {
-                    Image(systemName: "square.grid.4x3.fill").imageScale(.small)
-                } maximumValueLabel: {
-                    Image(systemName: "square.grid.2x2.fill").imageScale(.small)
-                }
-                .frame(width: 140)
-                .help("Tile size")
+        }
+        .safeAreaInset(edge: .bottom) {
+            if showStatusBar {
+                StatusBar(selectedEntries: selectedEntries,
+                          totalCount: currentNode?.count ?? 0,
+                          systemName: currentNode?.displayName,
+                          gridItemSize: $gridItemSize)
             }
         }
         .alert("Error",
@@ -116,9 +127,11 @@ struct ContentView: View {
         if library.isLoading && systems.isEmpty {
             ProgressView("Loading library…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let id = selection,
-                  let node = systems.first(where: { $0.id == id }) {
-            GalleryView(system: node, hideMissing: !showMissing, searchText: $searchText)
+        } else if let node = currentNode {
+            GalleryView(system: node,
+                        hideMissing: !showMissing,
+                        searchText: $searchText,
+                        selection: $entrySelection)
                 .id(node.id)
         } else {
             ContentUnavailableView("Select a system",

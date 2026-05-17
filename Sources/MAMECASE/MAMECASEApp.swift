@@ -5,6 +5,7 @@ import AppKit
 struct MAMECASEApp: App {
     @StateObject private var library = Library()
     @StateObject private var settings = AppSettings()
+    @AppStorage("showStatusBar") private var showStatusBar: Bool = true
 
     init() {
         // Without a proper .app bundle, an SPM executable defaults to a
@@ -26,6 +27,20 @@ struct MAMECASEApp: App {
                 }
         }
         .windowStyle(.titleBar)
+        .commands {
+            CommandMenu("View") {
+                Toggle("Status Bar", isOn: $showStatusBar)
+                    .keyboardShortcut("/", modifiers: [.command, .shift])
+                Divider()
+                Button {
+                    Task { await library.indexArcade() }
+                } label: {
+                    Text(library.arcadeIndexing ? "Refreshing…" : "Refresh")
+                }
+                .keyboardShortcut("r")
+                .disabled(library.arcadeIndexing || library.config == nil)
+            }
+        }
 
         Settings {
             SettingsView()

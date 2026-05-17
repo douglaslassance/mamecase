@@ -1,0 +1,55 @@
+import SwiftUI
+
+/// Bottom-of-window status bar. Shows a short description of the current
+/// selection on the left and the tile-size slider on the right.
+struct StatusBar: View {
+    let selectedEntries: [Entry]
+    let totalCount: Int
+    let systemName: String?
+    @Binding var gridItemSize: Double
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(leadingText)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 0)
+            Slider(value: $gridItemSize, in: 120...320) {
+                Text("Tile size")
+            } minimumValueLabel: {
+                Image(systemName: "square.grid.4x3.fill").imageScale(.small)
+            } maximumValueLabel: {
+                Image(systemName: "square.grid.2x2.fill").imageScale(.small)
+            }
+            .controlSize(.small)
+            .frame(width: 160)
+            .help("Tile size")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, minHeight: 28)
+        .background(.bar)
+        .overlay(alignment: .top) { Divider() }
+    }
+
+    private var leadingText: String {
+        switch selectedEntries.count {
+        case 0:
+            if let systemName {
+                return "\(systemName) — \(totalCount) entries"
+            }
+            return ""
+        case 1:
+            let e = selectedEntries[0]
+            var parts: [String] = ["\(e.displayName) · \(e.shortName)"]
+            if let y = e.year, !y.isEmpty { parts.append(y) }
+            if let p = e.publisher, !p.isEmpty { parts.append(p) }
+            if !e.owned { parts.append("missing") }
+            return parts.joined(separator: " · ")
+        default:
+            return "\(selectedEntries.count) selected"
+        }
+    }
+}
