@@ -29,6 +29,8 @@ final class Library: ObservableObject {
     @Published var controllerSchemes: [String] = []
     @Published var verifications: [Entry.ID: RomStatus] = [:]
     @Published var verifyingIDs: Set<Entry.ID> = []
+    @Published var downloadingIDs: Set<Entry.ID> = []
+    @Published var downloadStatus: String?
 
     private var settingsCancellables: Set<AnyCancellable> = []
 
@@ -289,5 +291,54 @@ final class Library: ObservableObject {
         for entry in targets {
             await verify(entry)
         }
+    }
+
+    // MARK: - ROM downloads
+
+    /// Where a freshly-downloaded ROM should land. We prefer the first
+    /// writable directory in the configured `romPaths`; if none exist or
+    /// are writable, fall back to `~/Downloads/roms` (matching the user's
+    /// original Python script).
+    func downloadDestination(for entry: Entry) -> URL? {
+        guard case .arcade = entry.kind else { return nil }
+        guard let cfg = config else { return nil }
+        let fm = FileManager.default
+        for dir in cfg.romPaths {
+            var isDir: ObjCBool = false
+            if fm.fileExists(atPath: dir.path, isDirectory: &isDir),
+               isDir.boolValue,
+               fm.isWritableFile(atPath: dir.path) {
+                return dir.appendingPathComponent("\(entry.shortName).zip")
+            }
+        }
+        guard let downloads = fm.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        let dir = downloads.appendingPathComponent("roms", isDirectory: true)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("\(entry.shortName).zip")
+    }
+
+    /// Download all arcade entries sequentially. Software entries are
+    /// silently skipped — the archive.org `mame-merged` item only covers
+    /// arcade sets.
+    func download(entries targets: [Entry], overwrite: Bool) async {
+        let arcade = targets.filter { if case .arcade = $0.kind { true } else { false } }
+        for entry in arcade {
+            guard let dest = downloadDestination(for: entry) else { continue }
+            if !overwrite, FileManager.default.fileExists(atPath: dest.path) { continue }
+            downloadingIDs.insert(entry.id)
+            downloadStatus = "Downloading \(entry.shortName)…"
+            do {
+                _ = try await RomDownloader.shared.download(shortName: entry.shortName, to: dest)
+            } catch {
+                loadError = error.localizedDescription
+            }
+            downloadingIDs.remove(entry.id)
+        }
+        downloadStatus = nil
+        rebuildPresence()
+        tagSoftwareOwnership()
+        tagArcadeOwnership()
     }
 }

@@ -10,6 +10,7 @@ struct GalleryView: View {
 
     @AppStorage("gridItemSize") private var gridItemSize: Double = 180
     @State private var anchor: Entry.ID?
+    @State private var pendingDownload: PendingDownload?
     @FocusState private var focused: Bool
 
     private var columns: [GridItem] {
@@ -63,6 +64,12 @@ struct GalleryView: View {
                                 }
                             }
                             .disabled(library.config == nil)
+                            if case .arcade = entry.kind {
+                                Button(downloadMenuTitle(for: entry)) {
+                                    startDownload(triggeredBy: entry)
+                                }
+                                .disabled(library.config == nil)
+                            }
                             Divider()
                             if let snap = library.mediaURL(for: entry, kind: .snap) {
                                 Button("Reveal Snapshot in Finder") {
@@ -107,11 +114,71 @@ struct GalleryView: View {
                                        description: Text(emptyHint))
             }
         }
+        .alert("Overwrite existing ROMs?",
+               isPresented: Binding(get: { pendingDownload != nil },
+                                    set: { if !$0 { pendingDownload = nil } })) {
+            Button("Cancel", role: .cancel) { pendingDownload = nil }
+            if let p = pendingDownload, p.existing.count < p.targets.count {
+                Button("Skip Existing") {
+                    let new = p.targets.filter { e in !p.existing.contains(where: { $0.id == e.id }) }
+                    pendingDownload = nil
+                    Task { await library.download(entries: new, overwrite: true) }
+                }
+            }
+            Button("Overwrite", role: .destructive) {
+                let targets = pendingDownload?.targets ?? []
+                pendingDownload = nil
+                Task { await library.download(entries: targets, overwrite: true) }
+            }
+        } message: {
+            if let p = pendingDownload {
+                Text(overwriteMessage(for: p))
+            }
+        }
     }
 
     private func verifyMenuTitle(for entry: Entry) -> String {
         let count = (selection.contains(entry.id) && selection.count > 1) ? selection.count : 1
         return count > 1 ? "Verify \(count) ROMs" : "Verify ROM"
+    }
+
+    private func downloadMenuTitle(for entry: Entry) -> String {
+        let targets = downloadTargets(triggeredBy: entry)
+        return targets.count > 1 ? "Download \(targets.count) ROMs" : "Download ROM"
+    }
+
+    /// Compute the entries that a context-menu action should act on:
+    /// the right-clicked entry, or every selected entry if it's part of
+    /// a multi-selection.
+    private func downloadTargets(triggeredBy entry: Entry) -> [Entry] {
+        if selection.contains(entry.id), selection.count > 1 {
+            return library.entries(for: system, hideMissing: false)
+                .filter { selection.contains($0.id) && isArcade($0) }
+        }
+        return isArcade(entry) ? [entry] : []
+    }
+
+    private func isArcade(_ entry: Entry) -> Bool {
+        if case .arcade = entry.kind { return true }
+        return false
+    }
+
+    private func startDownload(triggeredBy entry: Entry) {
+        let targets = downloadTargets(triggeredBy: entry)
+        guard !targets.isEmpty else { return }
+        let existing = targets.filter(\.owned)
+        if existing.isEmpty {
+            Task { await library.download(entries: targets, overwrite: true) }
+        } else {
+            pendingDownload = PendingDownload(targets: targets, existing: existing)
+        }
+    }
+
+    private func overwriteMessage(for p: PendingDownload) -> String {
+        if p.targets.count == 1 {
+            return "\(p.targets[0].shortName).zip already exists in your rompath."
+        }
+        return "\(p.existing.count) of \(p.targets.count) ROMs already exist in your rompath."
     }
 
     private var emptyHint: String {
@@ -148,6 +215,12 @@ struct GalleryView: View {
             anchor = entry.id
         }
     }
+}
+
+/// Tracks a pending download awaiting overwrite confirmation.
+struct PendingDownload {
+    let targets: [Entry]
+    let existing: [Entry]
 }
 
 private struct EntryTile: View {
