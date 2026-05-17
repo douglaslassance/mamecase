@@ -22,16 +22,10 @@ struct StatusBar: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer(minLength: 0)
-            Slider(value: $gridItemSize, in: 120...320) {
-                Text("Tile size")
-            } minimumValueLabel: {
-                Image(systemName: "square.grid.4x3.fill").imageScale(.small)
-            } maximumValueLabel: {
-                Image(systemName: "square.grid.2x2.fill").imageScale(.small)
-            }
-            .controlSize(.small)
-            .frame(width: 160)
-            .help("Tile size")
+            Slider(value: $gridItemSize, in: 120...320)
+                .controlSize(.small)
+                .frame(width: 160)
+                .help("Tile size")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)

@@ -70,15 +70,20 @@ struct GalleryView: View {
                                 }
                                 .disabled(library.config == nil)
                             }
-                            Divider()
-                            if let snap = library.mediaURL(for: entry, kind: .snap) {
-                                Button("Reveal Snapshot in Finder") {
-                                    NSWorkspace.shared.activateFileViewerSelecting([snap])
+                            if !isMultiSelected(entry) {
+                                Divider()
+                                if let snap = library.mediaURL(for: entry, kind: .snap) {
+                                    Button("Reveal Snapshot in Finder") {
+                                        NSWorkspace.shared.activateFileViewerSelecting([snap])
+                                    }
                                 }
-                            }
-                            Button("Copy Short Name") {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(entry.shortName, forType: .string)
+                                Button("Copy ROM Name") {
+                                    copyToPasteboard(entry.shortName)
+                                }
+                                Button("Copy Launch Command") {
+                                    copyToPasteboard(launchCommand(for: entry))
+                                }
+                                .disabled(library.config == nil)
                             }
                         }
                 }
@@ -179,6 +184,37 @@ struct GalleryView: View {
             return "\(p.targets[0].shortName).zip already exists in your rompath."
         }
         return "\(p.existing.count) of \(p.targets.count) ROMs already exist in your rompath."
+    }
+
+    private func isMultiSelected(_ entry: Entry) -> Bool {
+        selection.contains(entry.id) && selection.count > 1
+    }
+
+    private func copyToPasteboard(_ s: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(s, forType: .string)
+    }
+
+    /// Build the shell-quoted command line we'd execute to launch this
+    /// entry — mirrors what `Library.launch(_:)` actually runs.
+    private func launchCommand(for entry: Entry) -> String {
+        guard let cfg = library.config else { return entry.shortName }
+        let scheme = UserDefaults.standard.string(forKey: "controllerScheme")
+        let args = MameLauncher.arguments(for: entry,
+                                          romPaths: cfg.romPaths,
+                                          controllerScheme: scheme)
+        let parts = [cfg.executable] + args
+        return parts.map(shellQuote).joined(separator: " ")
+    }
+
+    private func shellQuote(_ s: String) -> String {
+        let safe = CharacterSet(charactersIn:
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/_-.:=,@%+")
+        if !s.isEmpty, s.unicodeScalars.allSatisfy({ safe.contains($0) }) {
+            return s
+        }
+        let escaped = s.replacingOccurrences(of: "'", with: "'\\''")
+        return "'\(escaped)'"
     }
 
     private var emptyHint: String {

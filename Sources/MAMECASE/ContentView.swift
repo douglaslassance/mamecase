@@ -8,6 +8,7 @@ struct ContentView: View {
     @AppStorage("mediaKind") private var mediaKind: MediaKind = .coverArt
     @AppStorage("gridItemSize") private var gridItemSize: Double = 180
     @AppStorage("showStatusBar") private var showStatusBar: Bool = true
+    @AppStorage("selectedSystemID") private var persistedSystemID: String = ""
     @State private var selection: SystemNode.ID?
     @State private var entrySelection: Set<Entry.ID> = []
     @State private var searchText: String = ""
@@ -73,6 +74,7 @@ struct ContentView: View {
                     .pickerStyle(.inline)
                 } label: {
                     Label(controllerDisplayName, systemImage: "gamecontroller")
+                        .labelStyle(.titleAndIcon)
                 }
                 .help("MAME -ctrlr profile")
                 .disabled(library.controllerSchemes.isEmpty)
@@ -107,6 +109,30 @@ struct ContentView: View {
             if missing && library.brewAvailable && !library.installingMame {
                 brewPromptShown = true
             }
+        }
+        .onChange(of: systems) { _, newSystems in
+            restoreSelectionIfNeeded(in: newSystems)
+        }
+        .onChange(of: selection) { _, new in
+            if let new { persistedSystemID = new }
+        }
+        .onAppear {
+            restoreSelectionIfNeeded(in: systems)
+        }
+    }
+
+    /// Pick a sidebar selection automatically: restore the last-used system
+    /// if it still exists, otherwise fall back to the first available.
+    private func restoreSelectionIfNeeded(in nodes: [SystemNode]) {
+        guard !nodes.isEmpty else { return }
+        if let current = selection, nodes.contains(where: { $0.id == current }) {
+            return
+        }
+        if !persistedSystemID.isEmpty,
+           nodes.contains(where: { $0.id == persistedSystemID }) {
+            selection = persistedSystemID
+        } else {
+            selection = nodes.first?.id
         }
     }
 

@@ -5,45 +5,36 @@ struct SettingsView: View {
     @EnvironmentObject var settings: AppSettings
 
     var body: some View {
-        TabView {
-            pathsTab
-                .tabItem { Label("Paths", systemImage: "folder") }
-        }
-        .padding(20)
-        .frame(width: 560, height: 460)
-    }
-
-    private var pathsTab: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            GroupBox("MAME") {
-                Form {
-                    LabeledContent("mame.ini directory") {
-                        HStack {
-                            TextField("", text: $settings.mameHomePath, prompt: Text("~/.mame"))
-                                .textFieldStyle(.roundedBorder)
-                            Button("Choose…") { pickDirectory($settings.mameHomePath) }
-                        }
+        Form {
+            Section("MAME") {
+                LabeledContent("mame.ini directory") {
+                    HStack(spacing: 8) {
+                        TextField("", text: $settings.mameHomePath, prompt: Text("~/.mame"))
+                            .textFieldStyle(.roundedBorder)
+                        Button("Choose…") { pickDirectory($settings.mameHomePath) }
                     }
-                    LabeledContent("MAME executable") {
-                        HStack {
-                            TextField("", text: $settings.mameExecutablePath, prompt: Text("mame"))
-                                .textFieldStyle(.roundedBorder)
-                            Button("Choose…") { pickFile($settings.mameExecutablePath) }
-                        }
+                }
+                LabeledContent("MAME executable") {
+                    HStack(spacing: 8) {
+                        TextField("", text: $settings.mameExecutablePath, prompt: Text("mame"))
+                            .textFieldStyle(.roundedBorder)
+                        Button("Choose…") { pickFile($settings.mameExecutablePath) }
                     }
                 }
             }
 
-            GroupBox("Additional ROM paths") {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Merged with paths from mame.ini's `rompath`.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    RomPathsEditor(paths: $settings.additionalRomPaths)
-                }
-                .padding(6)
+            Section {
+                RomPathsEditor(paths: $settings.additionalRomPaths)
+            } header: {
+                Text("Additional ROM paths")
+            } footer: {
+                Text("Merged with paths from mame.ini's `rompath`.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
+        .formStyle(.grouped)
+        .frame(width: 560, height: 480)
     }
 
     private func pickDirectory(_ binding: Binding<String>) {
@@ -72,26 +63,41 @@ private struct RomPathsEditor: View {
     @State private var selection: Int?
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 0) {
             List(selection: $selection) {
                 ForEach(Array(paths.enumerated()), id: \.offset) { idx, path in
-                    Text(path).tag(Optional(idx))
+                    Text(path)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .tag(Optional(idx))
                 }
             }
-            .frame(minHeight: 140)
-            .border(Color.secondary.opacity(0.2))
+            .listStyle(.bordered(alternatesRowBackgrounds: true))
+            .frame(minHeight: 160)
 
-            HStack {
-                Button {
-                    addPath()
-                } label: { Image(systemName: "plus") }
-                Button {
-                    removeSelected()
-                } label: { Image(systemName: "minus") }
+            HStack(spacing: 0) {
+                Button { addPath() } label: {
+                    Image(systemName: "plus")
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.borderless)
+                Divider().frame(height: 16)
+                Button { removeSelected() } label: {
+                    Image(systemName: "minus")
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.borderless)
                 .disabled(selection == nil)
                 Spacer()
             }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .overlay(Rectangle().frame(height: 1).foregroundStyle(.separator),
+                     alignment: .top)
         }
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.separator))
     }
 
     private func addPath() {
