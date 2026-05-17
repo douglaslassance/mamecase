@@ -39,6 +39,8 @@ final class Library: ObservableObject {
     @Published var mameMissing: Bool = false
     @Published var brewAvailable: Bool = false
     @Published var installingMame: Bool = false
+    @Published var sevenZipMissing: Bool = false
+    @Published var installingSevenZip: Bool = false
     /// Set of media kinds we've already kicked off an archive-extraction
     /// pass for; suppresses duplicate work across tiles.
     @Published private(set) var extractingMedia: Set<MediaKind> = []
@@ -327,13 +329,34 @@ final class Library: ObservableObject {
         extractingMedia.insert(kind)
         arcadeStatus = "Extracting \(kind.label) archive…"
         Task { [weak self] in
-            let didWork = await MediaProvider.shared.extractArchivesIfNeeded(kind: kind, config: cfg)
+            let result = await MediaProvider.shared.extractArchivesIfNeeded(kind: kind, config: cfg)
             await MainActor.run {
                 guard let self else { return }
                 self.extractingMedia.remove(kind)
                 if self.extractingMedia.isEmpty { self.arcadeStatus = nil }
-                if didWork { self.mediaGeneration &+= 1 }
+                if result.anySucceeded { self.mediaGeneration &+= 1 }
+                if result.needsSevenZip {
+                    self.sevenZipMissing = true
+                }
             }
+        }
+    }
+
+    /// Run `brew install sevenzip` and re-attempt media extraction on success.
+    func installSevenZipViaBrew() async {
+        guard !installingSevenZip, brewAvailable else { return }
+        installingSevenZip = true
+        arcadeStatus = "brew install sevenzip…"
+        let code = await BrewInstaller.install(package: "sevenzip")
+        arcadeStatus = nil
+        installingSevenZip = false
+        if code == 0 {
+            sevenZipMissing = false
+            // Retry whichever media kinds were waiting.
+            requestMediaExtraction(for: .snap)
+            requestMediaExtraction(for: .coverArt)
+        } else {
+            loadError = "Homebrew install failed (exit code \(code))."
         }
     }
 

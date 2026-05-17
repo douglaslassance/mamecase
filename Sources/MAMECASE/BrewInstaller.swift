@@ -18,6 +18,13 @@ enum BrewInstaller {
     /// process exit status (0 on success). Output is discarded — the user
     /// sees the result reflected in the library reload.
     static func installMame() async -> Int32 {
+        await install(package: "mame")
+    }
+
+    /// Generic `brew install <pkg>` wrapper used by feature detection
+    /// (e.g. offering to install `sevenzip` when a `.7z` archive needs
+    /// extracting but `7zz` isn't present).
+    static func install(package: String) async -> Int32 {
         await withCheckedContinuation { (continuation: CheckedContinuation<Int32, Never>) in
             DispatchQueue.global(qos: .userInitiated).async {
                 guard let brew = brewExecutable() else {
@@ -26,7 +33,7 @@ enum BrewInstaller {
                 }
                 let p = Process()
                 p.executableURL = URL(fileURLWithPath: brew)
-                p.arguments = ["install", "mame"]
+                p.arguments = ["install", package]
                 p.standardOutput = Pipe()
                 p.standardError = Pipe()
                 do {

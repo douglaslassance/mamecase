@@ -38,19 +38,25 @@ actor MediaProvider {
         return cachedFileURL(for: entry, kind: kind)
     }
 
+    /// Outcome reported back to `Library` so the UI can act on missing
+    /// extractor tools.
+    struct ExtractionResult {
+        var anySucceeded: Bool = false
+        var needsSevenZip: Bool = false
+    }
+
     /// Extract every sibling archive for `kind` once (idempotent per
-    /// archive URL). Returns true if at least one archive was extracted
-    /// or already had been; false if none exist.
+    /// archive URL).
     @discardableResult
-    func extractArchivesIfNeeded(kind: MediaKind, config: MameConfig) async -> Bool {
+    func extractArchivesIfNeeded(kind: MediaKind, config: MameConfig) async -> ExtractionResult {
         let archives = MediaProvider.archiveCandidates(for: kind, config: config)
-        guard !archives.isEmpty else { return false }
+        guard !archives.isEmpty else { return ExtractionResult() }
         let cacheDir = self.cacheDir(for: kind)
-        var anyDone = false
+        var out = ExtractionResult()
         for archive in archives {
-            if extracted.contains(archive) { anyDone = true; continue }
+            if extracted.contains(archive) { out.anySucceeded = true; continue }
             if let task = inFlight[archive] {
-                if await task.value { anyDone = true }
+                if await task.value { out.anySucceeded = true }
                 continue
             }
             let task = Task.detached(priority: .utility) {
@@ -66,10 +72,13 @@ actor MediaProvider {
             inFlight.removeValue(forKey: archive)
             if ok {
                 extracted.insert(archive)
-                anyDone = true
+                out.anySucceeded = true
+            } else if archive.pathExtension.lowercased() == "7z",
+                      !ArchiveExtractor.sevenZipAvailable() {
+                out.needsSevenZip = true
             }
         }
-        return anyDone
+        return out
     }
 
     // MARK: - Phase 1: loose files

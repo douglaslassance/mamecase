@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var entrySelection: Set<Entry.ID> = []
     @State private var searchText: String = ""
     @State private var brewPromptShown: Bool = false
+    @State private var sevenZipPromptShown: Bool = false
     /// Mirror of the persisted system→scheme map. Kept in sync via the
     /// picker binding; written through to `ControllerSchemes` on edit.
     @State private var schemeMap: [String: String] = ControllerSchemes.all()
@@ -183,6 +184,18 @@ struct ContentView: View {
         .onChange(of: library.mameMissing) { _, missing in
             if missing && library.brewAvailable && !library.installingMame {
                 brewPromptShown = true
+            }
+        }
+        .alert("Install 7-Zip via Homebrew?",
+               isPresented: $sevenZipPromptShown) {
+            Button("Install") { Task { await library.installSevenZipViaBrew() } }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Mamecase found a `.7z` media archive but `7zz` isn't installed. Install it now? This takes about a minute.")
+        }
+        .onChange(of: library.sevenZipMissing) { _, missing in
+            if missing && BrewInstaller.brewExecutable() != nil && !library.installingSevenZip {
+                sevenZipPromptShown = true
             }
         }
         .onChange(of: systems) { _, newSystems in

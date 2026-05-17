@@ -55,14 +55,19 @@ enum ArchiveExtractor {
         try run(tool: unzip, args: ["-qq", "-o", archive.path, "-d", outDir.path])
     }
 
+    private static let sevenZipCandidates = [
+        "/opt/homebrew/bin/7zz",
+        "/usr/local/bin/7zz",
+        "/opt/homebrew/bin/7z",
+        "/usr/local/bin/7z",
+    ]
+
+    static func sevenZipAvailable() -> Bool {
+        sevenZipCandidates.contains { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
     private static func runSevenZip(archive: URL, into outDir: URL) throws {
-        let candidates = [
-            "/opt/homebrew/bin/7zz",
-            "/usr/local/bin/7zz",
-            "/opt/homebrew/bin/7z",
-            "/usr/local/bin/7z",
-        ]
-        guard let tool = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+        guard let tool = sevenZipCandidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
             throw ArchiveError.noExtractor("7zz")
         }
         try run(tool: tool, args: ["x", "-aoa", "-bd", "-y", "-o\(outDir.path)", archive.path])
