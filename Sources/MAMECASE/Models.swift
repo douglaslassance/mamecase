@@ -33,13 +33,18 @@ struct SystemNode: Identifiable, Hashable {
     }
 }
 
-/// What kind of artwork to display in the gallery.
+/// A kind of media we display in the gallery for an entry.
 ///
-/// "Cover Art" is an abstraction: for arcade entries it resolves to the
+/// Naming note: MAME's `artwork/` directory refers specifically to bezels
+/// and overlays drawn around the running game — distinct from the things
+/// frontends show in a grid. We use **media** as the umbrella term for
+/// snap / cover / flyer / marquee / title / etc.
+///
+/// `coverArt` is an abstraction: for arcade entries it resolves to the
 /// machine's flyer (from `flyers_directory` in mame.ini); for software-list
 /// entries it resolves to per-game cover art under a MAMECASE-managed
 /// covers directory (defaults to `~/.mame/covers/<list>/<short>.png`).
-enum ArtworkMode: String, CaseIterable, Identifiable {
+enum MediaKind: String, CaseIterable, Identifiable {
     case coverArt
     case snap
 

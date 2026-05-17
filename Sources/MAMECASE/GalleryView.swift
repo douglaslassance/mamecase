@@ -136,7 +136,7 @@ private struct EntryTile: View {
     let cover: URL?
     let selected: Bool
 
-    @AppStorage("artworkMode") private var artworkMode: ArtworkMode = .coverArt
+    @AppStorage("mediaKind") private var mediaKind: MediaKind = .coverArt
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -192,7 +192,7 @@ private struct EntryTile: View {
     }
 
     private func preferredImage() -> NSImage? {
-        switch artworkMode {
+        switch mediaKind {
         case .coverArt:
             if let cover, let img = NSImage(contentsOf: cover) { return img }
             if let snapshot, let img = NSImage(contentsOf: snapshot) { return img }

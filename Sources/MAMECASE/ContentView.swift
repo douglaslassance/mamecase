@@ -4,7 +4,7 @@ struct ContentView: View {
     @EnvironmentObject var library: Library
     @AppStorage("showMissingFiles") private var showMissing: Bool = false
     @AppStorage("controllerScheme") private var controllerScheme: String = ""
-    @AppStorage("artworkMode") private var artworkMode: ArtworkMode = .coverArt
+    @AppStorage("mediaKind") private var mediaKind: MediaKind = .coverArt
     @AppStorage("gridItemSize") private var gridItemSize: Double = 180
     @State private var selection: SystemNode.ID?
     @State private var searchText: String = ""
@@ -27,16 +27,16 @@ struct ContentView: View {
                 .help("Show entries you don't have a ROM for")
             }
             ToolbarItem(placement: .primaryAction) {
-                Picker("Artwork", selection: $artworkMode) {
-                    ForEach(ArtworkMode.allCases) { mode in
-                        Image(systemName: mode.systemImage)
-                            .help(mode.label)
-                            .tag(mode)
+                Picker("Media", selection: $mediaKind) {
+                    ForEach(MediaKind.allCases) { kind in
+                        Image(systemName: kind.systemImage)
+                            .help(kind.label)
+                            .tag(kind)
                     }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .help("Artwork displayed in the gallery")
+                .help("Media displayed in the gallery")
             }
             ToolbarItem(placement: .primaryAction) {
                 Picker("Controller profile", selection: $controllerScheme) {
