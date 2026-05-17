@@ -5,6 +5,22 @@ struct SettingsView: View {
     @EnvironmentObject var settings: AppSettings
 
     var body: some View {
+        TabView {
+            GeneralSettingsTab()
+                .tabItem { Label("General", systemImage: "gearshape") }
+            MediaSettingsTab()
+                .tabItem { Label("Media", systemImage: "photo.on.rectangle.angled") }
+        }
+        .frame(width: 560, height: 480)
+    }
+}
+
+// MARK: - General
+
+private struct GeneralSettingsTab: View {
+    @EnvironmentObject var settings: AppSettings
+
+    var body: some View {
         Form {
             Section("MAME") {
                 LabeledContent("mame.ini directory") {
@@ -34,7 +50,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 560, height: 480)
     }
 
     private func pickDirectory(_ binding: Binding<String>) {
@@ -58,6 +73,79 @@ struct SettingsView: View {
     }
 }
 
+// MARK: - Media
+
+private struct MediaSettingsTab: View {
+    @State private var cacheSize: Int64? = nil
+    @State private var isClearing: Bool = false
+
+    private static let byteFormatter: ByteCountFormatter = {
+        let f = ByteCountFormatter()
+        f.allowedUnits = [.useKB, .useMB, .useGB]
+        f.countStyle = .file
+        return f
+    }()
+
+    var body: some View {
+        Form {
+            Section("Cache") {
+                LabeledContent("Location") {
+                    Text("~/Library/Caches/Mamecase/media")
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                LabeledContent("Size on disk") {
+                    if let size = cacheSize {
+                        Text(Self.byteFormatter.string(fromByteCount: size))
+                            .monospacedDigit()
+                    } else {
+                        Text("Calculating…").foregroundStyle(.secondary)
+                    }
+                }
+                HStack {
+                    Button("Reveal in Finder") {
+                        let url = URL(fileURLWithPath: NSString(string: "~/Library/Caches/Mamecase/media")
+                            .expandingTildeInPath)
+                        NSWorkspace.shared.activateFileViewerSelecting([url])
+                    }
+                    Spacer()
+                    Button(role: .destructive) {
+                        clearCache()
+                    } label: {
+                        Text(isClearing ? "Clearing…" : "Clear Cache")
+                    }
+                    .disabled(isClearing)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .task(id: isClearing) {
+            await refreshCacheSize()
+        }
+    }
+
+    private func refreshCacheSize() async {
+        let size = await Task.detached(priority: .utility) {
+            MediaProvider.shared.currentCacheSize()
+        }.value
+        await MainActor.run { cacheSize = size }
+    }
+
+    private func clearCache() {
+        isClearing = true
+        Task {
+            await MediaProvider.shared.clearCache()
+            await MainActor.run {
+                isClearing = false
+            }
+        }
+    }
+}
+
+// MARK: - ROM paths editor
+
 private struct RomPathsEditor: View {
     @Binding var paths: [String]
     @State private var selection: Int?
@@ -77,14 +165,12 @@ private struct RomPathsEditor: View {
 
             HStack(spacing: 0) {
                 Button { addPath() } label: {
-                    Image(systemName: "plus")
-                        .frame(width: 22, height: 22)
+                    Image(systemName: "plus").frame(width: 22, height: 22)
                 }
                 .buttonStyle(.borderless)
                 Divider().frame(height: 16)
                 Button { removeSelected() } label: {
-                    Image(systemName: "minus")
-                        .frame(width: 22, height: 22)
+                    Image(systemName: "minus").frame(width: 22, height: 22)
                 }
                 .buttonStyle(.borderless)
                 .disabled(selection == nil)

@@ -28,6 +28,36 @@ actor MediaProvider {
         cacheRoot.appendingPathComponent(kind.rawValue, isDirectory: true)
     }
 
+    nonisolated var cacheRootURL: URL { cacheRoot }
+
+    /// Wipe everything in the media cache. Forces a re-extract / re-fetch
+    /// on the next call.
+    func clearCache() {
+        try? FileManager.default.removeItem(at: cacheRoot)
+        try? FileManager.default.createDirectory(at: cacheRoot, withIntermediateDirectories: true)
+        extracted.removeAll()
+        inFlight.removeAll()
+    }
+
+    /// Recursively sum the size of every file under the media cache.
+    /// Slow for large caches; run from a background task.
+    nonisolated func currentCacheSize() -> Int64 {
+        let fm = FileManager.default
+        guard let enumerator = fm.enumerator(at: cacheRoot,
+                                             includingPropertiesForKeys: [.totalFileAllocatedSizeKey, .isRegularFileKey],
+                                             options: [.skipsHiddenFiles]) else {
+            return 0
+        }
+        var total: Int64 = 0
+        for case let url as URL in enumerator {
+            let vals = try? url.resourceValues(forKeys: [.isRegularFileKey, .totalFileAllocatedSizeKey])
+            if vals?.isRegularFile == true, let size = vals?.totalFileAllocatedSize {
+                total += Int64(size)
+            }
+        }
+        return total
+    }
+
     /// Synchronous lookup. Returns a local file URL if we have one, else
     /// nil. Does not extract from archives — for that, await
     /// `extractArchivesIfNeeded(kind:config:)` and call again.
