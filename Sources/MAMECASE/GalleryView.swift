@@ -11,7 +11,18 @@ struct GalleryView: View {
     @AppStorage("gridItemSize") private var gridItemSize: Double = 180
     @State private var anchor: Entry.ID?
     @State private var pendingDownload: PendingDownload?
+    @State private var tileFrames: [Entry.ID: CGRect] = [:]
+    @State private var marqueeStart: CGPoint?
+    @State private var marqueeCurrent: CGPoint?
+    @State private var marqueeBase: Set<Entry.ID> = []
+    @State private var marqueeAdditive: Bool = false
     @FocusState private var focused: Bool
+
+    private var marqueeRect: CGRect? {
+        guard let a = marqueeStart, let b = marqueeCurrent else { return nil }
+        return CGRect(x: min(a.x, b.x), y: min(a.y, b.y),
+                      width: abs(a.x - b.x), height: abs(a.y - b.y))
+    }
 
     private var columns: [GridItem] {
         [GridItem(.adaptive(minimum: gridItemSize, maximum: gridItemSize * 1.4), spacing: 16)]
@@ -36,6 +47,12 @@ struct GalleryView: View {
                               status: library.verifications[entry.id],
                               verifying: library.verifyingIDs.contains(entry.id),
                               selected: selection.contains(entry.id))
+                        .background(GeometryReader { geo in
+                            Color.clear.preference(
+                                key: TileFramesKey.self,
+                                value: [entry.id: geo.frame(in: .named("gallery"))]
+                            )
+                        })
                         .contentShape(Rectangle())
                         .overlay(
                             MouseEventView { clickCount, flags in
@@ -90,11 +107,26 @@ struct GalleryView: View {
             }
             .padding(16)
         }
+        .coordinateSpace(name: "gallery")
+        .onPreferenceChange(TileFramesKey.self) { tileFrames = $0 }
         .background(
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture { selection.removeAll() }
         )
+        .gesture(marqueeGesture)
+        .overlay(alignment: .topLeading) {
+            if let rect = marqueeRect {
+                Rectangle()
+                    .fill(Color.accentColor.opacity(0.15))
+                    .overlay(
+                        Rectangle().strokeBorder(Color.accentColor.opacity(0.6), lineWidth: 1)
+                    )
+                    .frame(width: rect.width, height: rect.height)
+                    .offset(x: rect.minX, y: rect.minY)
+                    .allowsHitTesting(false)
+            }
+        }
         .focusable()
         .focused($focused)
         .focusEffectDisabled()
@@ -235,6 +267,40 @@ struct GalleryView: View {
 
     // MARK: - Selection
 
+    // MARK: - Marquee selection
+
+    private var marqueeGesture: some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: .named("gallery"))
+            .onChanged { value in
+                if marqueeStart == nil {
+                    marqueeStart = value.startLocation
+                    marqueeAdditive = NSEvent.modifierFlags.contains(.command)
+                    marqueeBase = marqueeAdditive ? selection : []
+                }
+                marqueeCurrent = value.location
+                updateMarqueeSelection()
+            }
+            .onEnded { _ in
+                marqueeStart = nil
+                marqueeCurrent = nil
+                marqueeBase = []
+                marqueeAdditive = false
+            }
+    }
+
+    private func updateMarqueeSelection() {
+        guard let rect = marqueeRect else { return }
+        var result = marqueeBase
+        for (id, frame) in tileFrames where frame.intersects(rect) {
+            if marqueeAdditive, marqueeBase.contains(id) {
+                result.remove(id)
+            } else {
+                result.insert(id)
+            }
+        }
+        if result != selection { selection = result }
+    }
+
     private func handleClick(_ entry: Entry, flags: NSEvent.ModifierFlags) {
         if flags.contains(.command) {
             if selection.contains(entry.id) {
@@ -259,6 +325,16 @@ struct GalleryView: View {
 struct PendingDownload {
     let targets: [Entry]
     let existing: [Entry]
+}
+
+/// Collects each visible tile's frame in the gallery coordinate space so
+/// the marquee can compute intersection-based selection.
+struct TileFramesKey: PreferenceKey {
+    static var defaultValue: [Entry.ID: CGRect] = [:]
+    static func reduce(value: inout [Entry.ID: CGRect],
+                       nextValue: () -> [Entry.ID: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
 }
 
 private struct EntryTile: View {
