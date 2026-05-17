@@ -40,8 +40,7 @@ struct ContentView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Toggle(isOn: $showMissing) {
-                    Label("Show Missing Files",
-                          systemImage: "questionmark.square.dashed")
+                    Label("Show Missing Files", systemImage: "text.page")
                 }
                 .toggleStyle(.button)
                 .help("Show entries you don't have a ROM for")
