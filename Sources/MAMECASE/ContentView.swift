@@ -4,7 +4,6 @@ struct ContentView: View {
     @EnvironmentObject var library: Library
     @EnvironmentObject var settings: AppSettings
     @AppStorage("showMissingFiles") private var showMissing: Bool = false
-    @AppStorage("controllerScheme") private var controllerScheme: String = ""
     @AppStorage("mediaKind") private var mediaKind: MediaKind = .coverArt
     @AppStorage("gridItemSize") private var gridItemSize: Double = 180
     @AppStorage("showStatusBar") private var showStatusBar: Bool = true
@@ -13,6 +12,9 @@ struct ContentView: View {
     @State private var entrySelection: Set<Entry.ID> = []
     @State private var searchText: String = ""
     @State private var brewPromptShown: Bool = false
+    /// Mirror of the persisted system→scheme map. Kept in sync via the
+    /// picker binding; written through to `ControllerSchemes` on edit.
+    @State private var schemeMap: [String: String] = ControllerSchemes.all()
 
     private var systems: [SystemNode] { library.systems(hideMissing: !showMissing) }
 
@@ -30,8 +32,31 @@ struct ContentView: View {
         return all.filter { entrySelection.contains($0.id) }
     }
 
+    private var currentSchemeForSystem: String {
+        guard let id = selection else { return "" }
+        return schemeMap[id] ?? ""
+    }
+
     private var controllerDisplayName: String {
-        controllerScheme.isEmpty ? "Default" : controllerScheme
+        let s = currentSchemeForSystem
+        return s.isEmpty ? "Default" : s
+    }
+
+    /// Binding into the per-system scheme map. Writes update the in-memory
+    /// mirror (so the picker re-renders) and persist via `ControllerSchemes`.
+    private var schemeBinding: Binding<String> {
+        Binding(
+            get: { currentSchemeForSystem },
+            set: { newValue in
+                guard let id = selection else { return }
+                if newValue.isEmpty {
+                    schemeMap.removeValue(forKey: id)
+                } else {
+                    schemeMap[id] = newValue
+                }
+                ControllerSchemes.set(newValue, for: id)
+            }
+        )
     }
 
     var body: some View {
@@ -62,7 +87,7 @@ struct ContentView: View {
             }
             ToolbarItem(placement: .primaryAction) {
                 Menu {
-                    Picker("Controller profile", selection: $controllerScheme) {
+                    Picker("Controller profile", selection: schemeBinding) {
                         Label("Default", systemImage: "gamecontroller").tag("")
                         if !library.controllerSchemes.isEmpty {
                             Divider()
@@ -76,8 +101,8 @@ struct ContentView: View {
                     Label(controllerDisplayName, systemImage: "gamecontroller")
                         .labelStyle(.titleAndIcon)
                 }
-                .help("MAME -ctrlr profile")
-                .disabled(library.controllerSchemes.isEmpty)
+                .help("MAME -ctrlr profile (per system)")
+                .disabled(library.controllerSchemes.isEmpty || selection == nil)
             }
         }
         .safeAreaInset(edge: .bottom) {
