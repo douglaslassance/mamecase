@@ -39,6 +39,12 @@ struct MAMECASEApp: App {
                 }
                 .keyboardShortcut("r")
                 .disabled(library.arcadeIndexing || library.config == nil)
+                Button {
+                    Task { await library.verifyAll() }
+                } label: {
+                    Text(library.isVerifyingAll ? "Verifying…" : "Verify All ROMs")
+                }
+                .disabled(library.isVerifyingAll || library.config == nil)
             }
         }
 

@@ -128,6 +128,8 @@ struct MameConfig {
     let flyerPaths: [URL]
     /// resolved cover-art dirs (MAMECASE convention; defaults to `<mameHome>/covers`)
     let coverPaths: [URL]
+    /// resolved shader directory (mame's `glsl_shader_path`, defaults to `glsl`)
+    let shaderPaths: [URL]
     /// path to mame executable
     let executable: String
 }

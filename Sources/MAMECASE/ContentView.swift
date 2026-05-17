@@ -15,6 +15,7 @@ struct ContentView: View {
     /// Mirror of the persisted system→scheme map. Kept in sync via the
     /// picker binding; written through to `ControllerSchemes` on edit.
     @State private var schemeMap: [String: String] = ControllerSchemes.all()
+    @State private var shaderMap: [String: String] = ShaderSchemes.all()
 
     private var systems: [SystemNode] { library.systems(hideMissing: !showMissing) }
 
@@ -55,6 +56,36 @@ struct ContentView: View {
                     schemeMap[id] = newValue
                 }
                 ControllerSchemes.set(newValue, for: id)
+            }
+        )
+    }
+
+    private var currentShaderForSystem: String {
+        guard let id = selection else { return "" }
+        return shaderMap[id] ?? ""
+    }
+
+    private var shaderDisplayName: String {
+        let s = currentShaderForSystem
+        if s.isEmpty { return "Default" }
+        // Strip leading "glsl/" so the toolbar label stays short.
+        if let slash = s.firstIndex(of: "/") {
+            return String(s[s.index(after: slash)...])
+        }
+        return s
+    }
+
+    private var shaderBinding: Binding<String> {
+        Binding(
+            get: { currentShaderForSystem },
+            set: { newValue in
+                guard let id = selection else { return }
+                if newValue.isEmpty {
+                    shaderMap.removeValue(forKey: id)
+                } else {
+                    shaderMap[id] = newValue
+                }
+                ShaderSchemes.set(newValue, for: id)
             }
         )
     }
@@ -104,6 +135,25 @@ struct ContentView: View {
                 .help("MAME -ctrlr profile (per system)")
                 .disabled(library.controllerSchemes.isEmpty || selection == nil)
             }
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Picker("Shader", selection: shaderBinding) {
+                        Label("Default", systemImage: "sparkles").tag("")
+                        if !library.shaderSchemes.isEmpty {
+                            Divider()
+                            ForEach(library.shaderSchemes, id: \.self) { name in
+                                Label(displayShaderName(name), systemImage: "sparkles").tag(name)
+                            }
+                        }
+                    }
+                    .pickerStyle(.inline)
+                } label: {
+                    Label(shaderDisplayName, systemImage: "sparkles")
+                        .labelStyle(.titleAndIcon)
+                }
+                .help("GLSL shader override (per system, slot 1)")
+                .disabled(library.shaderSchemes.isEmpty || selection == nil)
+            }
         }
         .safeAreaInset(edge: .bottom) {
             if showStatusBar {
@@ -144,6 +194,13 @@ struct ContentView: View {
         .onAppear {
             restoreSelectionIfNeeded(in: systems)
         }
+    }
+
+    private func displayShaderName(_ full: String) -> String {
+        if let slash = full.firstIndex(of: "/") {
+            return String(full[full.index(after: slash)...])
+        }
+        return full
     }
 
     /// Pick a sidebar selection automatically: restore the last-used system

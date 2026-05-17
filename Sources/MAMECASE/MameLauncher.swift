@@ -14,8 +14,13 @@ enum MameLauncher {
     /// Build the argument list for an entry, prefixing `-rompath` with the
     /// combined paths (Mamecase settings + mame.ini) so MAME sees every
     /// location regardless of how it was configured. An optional controller
-    /// scheme (basename of a `.cfg` in `ctrlrpath`) is passed via `-ctrlr`.
-    static func arguments(for entry: Entry, romPaths: [URL], controllerScheme: String? = nil) -> [String] {
+    /// scheme (basename of a `.cfg` in `ctrlrpath`) is passed via `-ctrlr`;
+    /// an optional shader is passed via `-glsl_shader_mame1` (slot 1, so it
+    /// layers on top of whatever the user already has in mame.ini).
+    static func arguments(for entry: Entry,
+                          romPaths: [URL],
+                          controllerScheme: String? = nil,
+                          shader: String? = nil) -> [String] {
         var args: [String] = []
         if !romPaths.isEmpty {
             args.append("-rompath")
@@ -25,6 +30,10 @@ enum MameLauncher {
            !scheme.trimmingCharacters(in: .whitespaces).isEmpty {
             args.append("-ctrlr")
             args.append(scheme)
+        }
+        if let shader, !shader.trimmingCharacters(in: .whitespaces).isEmpty {
+            args.append("-glsl_shader_mame1")
+            args.append(shader)
         }
         switch entry.kind {
         case .arcade:

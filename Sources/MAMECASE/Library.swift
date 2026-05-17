@@ -27,8 +27,13 @@ final class Library: ObservableObject {
     @Published var arcadeStatus: String?
     @Published var presence: PresenceIndex = .empty
     @Published var controllerSchemes: [String] = []
+    @Published var shaderSchemes: [String] = []
     @Published var verifications: [Entry.ID: RomStatus] = [:]
     @Published var verifyingIDs: Set<Entry.ID> = []
+    @Published var isVerifyingAll: Bool = false
+    /// In-memory mirror of `verifications.json` so we can decide cache hits
+    /// without touching disk on every entry.
+    private var verificationCache: [Entry.ID: VerificationCache.Record] = [:]
     @Published var downloadingIDs: Set<Entry.ID> = []
     @Published var downloadStatus: String?
     @Published var mameMissing: Bool = false
@@ -94,6 +99,14 @@ final class Library: ObservableObject {
             self.config = cfg
             self.mameMissing = false
             rebuildControllerSchemes()
+            rebuildShaderSchemes()
+
+            // Hydrate verification cache so tile badges appear immediately
+            // for ROMs we verified in a previous session.
+            self.verificationCache = VerificationCache.load()
+            for (id, record) in verificationCache {
+                self.verifications[id] = record.status
+            }
 
             // Hydrate arcade entries from disk cache so the gallery is usable
             // immediately. The fresh `mame -listfull` re-index runs in the
@@ -154,6 +167,27 @@ final class Library: ObservableObject {
         self.controllerSchemes = found.sorted(by: { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending })
     }
 
+    /// Scan the shader directory for GLSL shaders. Each `.vsh` file is the
+    /// entry point of a shader; we return its path relative to the mame
+    /// home (e.g. `glsl/glsl_plain`) so it matches the convention used in
+    /// `mame.ini`.
+    private func rebuildShaderSchemes() {
+        guard let cfg = config else { return }
+        let fm = FileManager.default
+        var found: Set<String> = []
+        for dir in cfg.shaderPaths {
+            guard let files = try? fm.contentsOfDirectory(at: dir,
+                                                          includingPropertiesForKeys: nil,
+                                                          options: [.skipsHiddenFiles]) else { continue }
+            for file in files where file.pathExtension.lowercased() == "vsh" {
+                let basename = file.deletingPathExtension().lastPathComponent
+                let dirName = dir.lastPathComponent
+                found.insert("\(dirName)/\(basename)")
+            }
+        }
+        self.shaderSchemes = found.sorted(by: { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending })
+    }
+
     /// Reload everything after settings that affect the mame.ini location or
     /// executable changed. Re-parses software lists.
     func reload(settings: AppSettings) async {
@@ -173,6 +207,7 @@ final class Library: ObservableObject {
             let cfg = try MameConfigLoader.load(settings: snapshot)
             self.config = cfg
             rebuildControllerSchemes()
+            rebuildShaderSchemes()
             rebuildPresence()
             tagSoftwareOwnership()
             tagArcadeOwnership()
@@ -304,12 +339,15 @@ final class Library: ObservableObject {
 
     func launch(_ entry: Entry) {
         guard let cfg = config else { return }
-        let scheme = ControllerSchemes.scheme(for: ControllerSchemes.systemID(for: entry))
+        let systemID = ControllerSchemes.systemID(for: entry)
+        let scheme = ControllerSchemes.scheme(for: systemID)
+        let shader = ShaderSchemes.scheme(for: systemID)
         do {
             try MameLauncher.launch(executable: cfg.executable,
                                     args: MameLauncher.arguments(for: entry,
                                                                  romPaths: cfg.romPaths,
-                                                                 controllerScheme: scheme),
+                                                                 controllerScheme: scheme,
+                                                                 shader: shader),
                                     workingDirectory: cfg.homePath)
         } catch {
             self.loadError = "Launch failed: \(error.localizedDescription)"
@@ -325,7 +363,9 @@ final class Library: ObservableObject {
 
     // MARK: - ROM verification
 
-    /// Run MAME's audit for one entry and record the result.
+    /// Run MAME's audit for one entry and record the result. Always runs
+    /// MAME regardless of cache state — this is the "force re-check" path
+    /// invoked from the per-entry context menu.
     func verify(_ entry: Entry) async {
         guard let cfg = config else { return }
         verifyingIDs.insert(entry.id)
@@ -334,6 +374,10 @@ final class Library: ObservableObject {
                                               executable: cfg.executable,
                                               romPaths: cfg.romPaths)
         verifications[entry.id] = status
+        verificationCache[entry.id] = VerificationCache.makeRecord(status: status,
+                                                                   for: entry,
+                                                                   romPaths: cfg.romPaths)
+        VerificationCache.save(verificationCache)
     }
 
     /// Verify every selected entry sequentially. Sequential to avoid
@@ -344,6 +388,49 @@ final class Library: ObservableObject {
         for entry in targets {
             await verify(entry)
         }
+    }
+
+    /// Verify every arcade and software entry, using the cache to skip
+    /// ROMs whose underlying file hasn't changed since the last audit.
+    /// Sequential: a `mame -verifyroms` invocation per uncached entry.
+    func verifyAll() async {
+        guard let cfg = config, !isVerifyingAll else { return }
+        isVerifyingAll = true
+        defer {
+            isVerifyingAll = false
+            arcadeStatus = nil
+        }
+
+        var all: [Entry] = arcadeEntries
+        for list in softwareLists { all.append(contentsOf: list.entries) }
+        let total = all.count
+        var done = 0
+        var changed = false
+        arcadeStatus = "Verifying ROMs… 0/\(total)"
+
+        for entry in all {
+            if let cached = VerificationCache.freshStatus(for: entry,
+                                                          romPaths: cfg.romPaths,
+                                                          cache: verificationCache) {
+                verifications[entry.id] = cached
+            } else {
+                verifyingIDs.insert(entry.id)
+                let status = await RomVerifier.verify(entry: entry,
+                                                      executable: cfg.executable,
+                                                      romPaths: cfg.romPaths)
+                verifyingIDs.remove(entry.id)
+                verifications[entry.id] = status
+                verificationCache[entry.id] = VerificationCache.makeRecord(status: status,
+                                                                           for: entry,
+                                                                           romPaths: cfg.romPaths)
+                changed = true
+            }
+            done += 1
+            if done % 25 == 0 || done == total {
+                arcadeStatus = "Verifying ROMs… \(done)/\(total)"
+            }
+        }
+        if changed { VerificationCache.save(verificationCache) }
     }
 
     // MARK: - ROM downloads
