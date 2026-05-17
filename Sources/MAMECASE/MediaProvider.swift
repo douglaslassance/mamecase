@@ -17,6 +17,14 @@ actor MediaProvider {
     private let cacheRoot: URL
     private var extracted: Set<URL> = []
     private var inFlight: [URL: Task<Bool, Never>] = [:]
+    private var onlineInFlight: [String: Task<URL?, Never>] = [:]
+    private var onlineMisses: Set<String> = []
+    private let session: URLSession = {
+        let cfg = URLSessionConfiguration.default
+        cfg.timeoutIntervalForRequest = 20
+        cfg.httpMaximumConnectionsPerHost = 6
+        return URLSession(configuration: cfg)
+    }()
 
     init() {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
@@ -29,6 +37,92 @@ actor MediaProvider {
     }
 
     nonisolated var cacheRootURL: URL { cacheRoot }
+
+    nonisolated static func basename(for entry: Entry) -> String {
+        switch entry.kind {
+        case .arcade: return entry.shortName
+        case .software(let system): return "\(system)/\(entry.shortName)"
+        }
+    }
+
+    nonisolated func cacheURL(for entry: Entry, kind: MediaKind) -> URL {
+        cacheDir(for: kind).appendingPathComponent("\(MediaProvider.basename(for: entry)).png")
+    }
+
+    /// Fetch the entry's media for `kind` from the Libretro thumbnails
+    /// repo. Caches the result at the same path used by archive-extracted
+    /// media, so subsequent synchronous lookups pick it up automatically.
+    /// Software entries currently have no online source (handled later by
+    /// OpenVGDB) — this call returns nil for them.
+    func fetchOnline(for entry: Entry, kind: MediaKind) async -> URL? {
+        guard case .arcade = entry.kind else { return nil }
+        let key = "\(kind.rawValue)/\(MediaProvider.basename(for: entry))"
+        let dest = cacheURL(for: entry, kind: kind)
+        if FileManager.default.fileExists(atPath: dest.path) { return dest }
+        if onlineMisses.contains(key) { return nil }
+        if let task = onlineInFlight[key] { return await task.value }
+
+        let candidates = libretroCandidates(for: entry, kind: kind)
+        let session = self.session
+        let task = Task.detached(priority: .utility) { () -> URL? in
+            for url in candidates {
+                do {
+                    let (data, response) = try await session.data(from: url)
+                    guard let http = response as? HTTPURLResponse,
+                          http.statusCode == 200 else { continue }
+                    try FileManager.default.createDirectory(at: dest.deletingLastPathComponent(),
+                                                            withIntermediateDirectories: true)
+                    try data.write(to: dest, options: .atomic)
+                    return dest
+                } catch { continue }
+            }
+            return nil
+        }
+        onlineInFlight[key] = task
+        let result = await task.value
+        onlineInFlight.removeValue(forKey: key)
+        if result == nil { onlineMisses.insert(key) }
+        return result
+    }
+
+    /// Remove cached files and online-miss markers for `entry`, forcing
+    /// the next resolution attempt to re-run the full chain.
+    func invalidate(entry: Entry) {
+        let exts = ["png", "jpg", "jpeg"]
+        let base = MediaProvider.basename(for: entry)
+        for kind in MediaKind.allCases {
+            for ext in exts {
+                let url = cacheDir(for: kind).appendingPathComponent("\(base).\(ext)")
+                try? FileManager.default.removeItem(at: url)
+            }
+            onlineMisses.remove("\(kind.rawValue)/\(base)")
+        }
+    }
+
+    private nonisolated func libretroCandidates(for entry: Entry, kind: MediaKind) -> [URL] {
+        guard case .arcade = entry.kind else { return [] }
+        let bucket: String
+        switch kind {
+        case .coverArt: bucket = "Named_Boxarts"
+        case .snap: bucket = "Named_Snaps"
+        }
+        let display = entry.displayName
+        var names: [String] = [display]
+        // Libretro often files the parenthetical region/publisher tag
+        // separately; some entries are filed without it, so try a trimmed
+        // variant as a fallback.
+        if let paren = display.range(of: " (", options: .backwards),
+           display.hasSuffix(")") {
+            let trimmed = String(display[..<paren.lowerBound])
+            if !trimmed.isEmpty, trimmed != display { names.append(trimmed) }
+        }
+        return names.compactMap { name -> URL? in
+            guard let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else {
+                return nil
+            }
+            return URL(string: "https://raw.githubusercontent.com/libretro-thumbnails/MAME/master/\(bucket)/\(encoded).png")
+        }
+    }
 
     /// Wipe everything in the media cache. Forces a re-extract / re-fetch
     /// on the next call.
@@ -218,13 +312,4 @@ actor MediaProvider {
         }
     }
 
-    /// Per-entry path stem inside a media directory.
-    /// - Arcade machines are flat (`pacman.png`).
-    /// - Software-list entries are nested by list (`nes/zelda.png`).
-    private static func basename(for entry: Entry) -> String {
-        switch entry.kind {
-        case .arcade: return entry.shortName
-        case .software(let system): return "\(system)/\(entry.shortName)"
-        }
-    }
 }

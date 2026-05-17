@@ -327,6 +327,26 @@ final class Library: ObservableObject {
         return await HistoryProvider.shared.text(for: entry, historyPaths: cfg.historyPaths)
     }
 
+    /// Try to fetch this entry's media from an online source (libretro for
+    /// arcade today). Caches into the media cache on success.
+    @discardableResult
+    func fetchOnlineMedia(for entry: Entry, kind: MediaKind) async -> URL? {
+        await MediaProvider.shared.fetchOnline(for: entry, kind: kind)
+    }
+
+    /// Clear cached media for the selected entries, then re-run the
+    /// resolution chain (loose → archive → online) on the next tile
+    /// render. Triggered from the "Regenerate Media" context action.
+    func regenerateMedia(ids: Set<Entry.ID>, in system: SystemNode) async {
+        let targets = entries(for: system, hideMissing: false).filter { ids.contains($0.id) }
+        for entry in targets {
+            await MediaProvider.shared.invalidate(entry: entry)
+        }
+        // Bump the generation token so EntryTile `.task` IDs change and
+        // the tiles re-run their media resolution.
+        mediaGeneration &+= 1
+    }
+
     /// Kick off a one-time bulk extraction for `kind` if archives exist on
     /// disk. Cheap to call from many tiles; the actor inside MediaProvider
     /// deduplicates work per archive.

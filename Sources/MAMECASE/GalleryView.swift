@@ -42,11 +42,10 @@ struct GalleryView: View {
             LazyVGrid(columns: columns, spacing: 16) {
                 ForEach(entries) { entry in
                     EntryTile(entry: entry,
-                              snapURL: library.mediaURL(for: entry, kind: .snap),
-                              coverURL: library.mediaURL(for: entry, kind: .coverArt),
                               status: library.verifications[entry.id],
                               verifying: library.verifyingIDs.contains(entry.id),
-                              selected: selection.contains(entry.id))
+                              selected: selection.contains(entry.id),
+                              generation: library.mediaGeneration)
                         .background(GeometryReader { geo in
                             Color.clear.preference(
                                 key: TileFramesKey.self,
@@ -87,6 +86,16 @@ struct GalleryView: View {
                                 }
                                 .disabled(library.config == nil)
                             }
+                            Button(regenerateMenuTitle(for: entry)) {
+                                Task {
+                                    if selection.contains(entry.id), selection.count > 1 {
+                                        await library.regenerateMedia(ids: selection, in: system)
+                                    } else {
+                                        await library.regenerateMedia(ids: [entry.id], in: system)
+                                    }
+                                }
+                            }
+                            .disabled(library.config == nil)
                             if !isMultiSelected(entry) {
                                 Divider()
                                 if let snap = library.mediaURL(for: entry, kind: .snap) {
@@ -182,6 +191,11 @@ struct GalleryView: View {
     private func downloadMenuTitle(for entry: Entry) -> String {
         let targets = downloadTargets(triggeredBy: entry)
         return targets.count > 1 ? "Download \(targets.count) ROMs" : "Download ROM"
+    }
+
+    private func regenerateMenuTitle(for entry: Entry) -> String {
+        let count = (selection.contains(entry.id) && selection.count > 1) ? selection.count : 1
+        return count > 1 ? "Regenerate Media for \(count) Entries" : "Regenerate Media"
     }
 
     /// Compute the entries that a context-menu action should act on:
@@ -338,14 +352,16 @@ struct TileFramesKey: PreferenceKey {
 }
 
 private struct EntryTile: View {
+    @EnvironmentObject var library: Library
     let entry: Entry
-    let snapURL: URL?
-    let coverURL: URL?
     let status: RomStatus?
     let verifying: Bool
     let selected: Bool
+    let generation: Int
 
     @AppStorage("mediaKind") private var mediaKind: MediaKind = .coverArt
+    @State private var snapURL: URL?
+    @State private var coverURL: URL?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -415,6 +431,29 @@ private struct EntryTile: View {
         )
         .opacity(entry.owned ? 1.0 : 0.45)
         .help("\(entry.displayName) — \(entry.shortName)\(entry.owned ? "" : " (missing)")")
+        .task(id: "\(entry.id)/\(generation)") {
+            await resolveMedia()
+        }
+    }
+
+    /// Resolution chain runs against Library:
+    ///   1. Local file (loose or archive-extracted) via `mediaURL`
+    ///   2. Online fetch via `fetchOnlineMedia` (libretro for arcade)
+    /// Each step writes into the media cache on success, so step 1's
+    /// follow-up read finds the file.
+    private func resolveMedia() async {
+        snapURL = library.mediaURL(for: entry, kind: .snap)
+        coverURL = library.mediaURL(for: entry, kind: .coverArt)
+        guard snapURL == nil && coverURL == nil else { return }
+
+        // Prefer the kind the user is viewing; fall back to the other one
+        // so cross-fallback still works.
+        let order: [MediaKind] = mediaKind == .snap ? [.snap, .coverArt] : [.coverArt, .snap]
+        for kind in order {
+            if await library.fetchOnlineMedia(for: entry, kind: kind) != nil { break }
+        }
+        snapURL = library.mediaURL(for: entry, kind: .snap)
+        coverURL = library.mediaURL(for: entry, kind: .coverArt)
     }
 
     private func preferredImage() -> NSImage? {
