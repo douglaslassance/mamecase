@@ -2,11 +2,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "MAMECASE",
+    name: "Mamecase",
     platforms: [.macOS(.v14)],
     targets: [
         .executableTarget(
-            name: "MAMECASE",
+            name: "Mamecase",
             path: "Sources/MAMECASE"
         )
     ]

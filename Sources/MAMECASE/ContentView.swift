@@ -98,7 +98,7 @@ struct ContentView: View {
                 }
             }
         }
-        .navigationTitle("MAMECASE")
+        .navigationTitle("Mamecase")
         .frame(minWidth: 220)
         .overlay(alignment: .bottom) {
             if let status = library.arcadeStatus {

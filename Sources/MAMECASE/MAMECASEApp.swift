@@ -14,7 +14,7 @@ struct MAMECASEApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("MAMECASE") {
+        WindowGroup("Mamecase") {
             ContentView()
                 .environmentObject(library)
                 .environmentObject(settings)
