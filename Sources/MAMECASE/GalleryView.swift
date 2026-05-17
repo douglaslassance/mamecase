@@ -34,12 +34,15 @@ struct GalleryView: View {
                               coverURL: library.mediaURL(for: entry, kind: .coverArt),
                               selected: selection.contains(entry.id))
                         .contentShape(Rectangle())
-                        .onTapGesture(count: 2) {
-                            library.launch(entry)
-                        }
-                        .onTapGesture {
-                            handleClick(entry)
-                        }
+                        .overlay(
+                            MouseEventView { clickCount in
+                                if clickCount >= 2 {
+                                    library.launch(entry)
+                                } else {
+                                    handleClick(entry)
+                                }
+                            }
+                        )
                         .contextMenu {
                             Button("Launch") {
                                 if selection.contains(entry.id), selection.count > 1 {
