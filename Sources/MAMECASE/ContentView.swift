@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var library: Library
+    @EnvironmentObject var settings: AppSettings
     @AppStorage("showMissingFiles") private var showMissing: Bool = false
     @AppStorage("controllerScheme") private var controllerScheme: String = ""
     @AppStorage("mediaKind") private var mediaKind: MediaKind = .coverArt
@@ -10,6 +11,7 @@ struct ContentView: View {
     @State private var selection: SystemNode.ID?
     @State private var entrySelection: Set<Entry.ID> = []
     @State private var searchText: String = ""
+    @State private var brewPromptShown: Bool = false
 
     private var systems: [SystemNode] { library.systems(hideMissing: !showMissing) }
 
@@ -91,6 +93,20 @@ struct ContentView: View {
             Button("OK") { library.loadError = nil }
         } message: {
             Text(library.loadError ?? "")
+        }
+        .alert("Install MAME via Homebrew?",
+               isPresented: $brewPromptShown) {
+            Button("Install") {
+                Task { await library.installMameViaBrew(settings: settings) }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("MAME isn't on your PATH but Homebrew is. Install it now? This may take a couple of minutes.")
+        }
+        .onChange(of: library.mameMissing) { _, missing in
+            if missing && library.brewAvailable && !library.installingMame {
+                brewPromptShown = true
+            }
         }
     }
 

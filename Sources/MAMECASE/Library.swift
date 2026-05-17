@@ -31,6 +31,9 @@ final class Library: ObservableObject {
     @Published var verifyingIDs: Set<Entry.ID> = []
     @Published var downloadingIDs: Set<Entry.ID> = []
     @Published var downloadStatus: String?
+    @Published var mameMissing: Bool = false
+    @Published var brewAvailable: Bool = false
+    @Published var installingMame: Bool = false
 
     private var settingsCancellables: Set<AnyCancellable> = []
 
@@ -82,6 +85,7 @@ final class Library: ObservableObject {
         do {
             let cfg = try MameConfigLoader.load(settings: snapshot)
             self.config = cfg
+            self.mameMissing = false
             rebuildControllerSchemes()
 
             // Hydrate arcade entries from disk cache so the gallery is usable
@@ -100,8 +104,26 @@ final class Library: ObservableObject {
             Task { [weak self] in
                 await self?.indexArcade()
             }
+        } catch MameConfigError.executableNotFound {
+            self.mameMissing = true
+            self.brewAvailable = BrewInstaller.brewExecutable() != nil
         } catch {
             self.loadError = error.localizedDescription
+        }
+    }
+
+    /// Run `brew install mame` and reload the library on success.
+    func installMameViaBrew(settings: AppSettings) async {
+        guard !installingMame, brewAvailable else { return }
+        installingMame = true
+        arcadeStatus = "brew install mame…"
+        let code = await BrewInstaller.installMame()
+        arcadeStatus = nil
+        installingMame = false
+        if code == 0 {
+            await load(settings: settings)
+        } else {
+            loadError = "Homebrew install failed (exit code \(code))."
         }
     }
 
