@@ -38,11 +38,11 @@ struct GalleryView: View {
                               selected: selection.contains(entry.id))
                         .contentShape(Rectangle())
                         .overlay(
-                            MouseEventView { clickCount in
+                            MouseEventView { clickCount, flags in
                                 if clickCount >= 2 {
                                     library.launch(entry)
                                 } else {
-                                    handleClick(entry)
+                                    handleClick(entry, flags: flags)
                                 }
                             }
                         )
@@ -235,8 +235,7 @@ struct GalleryView: View {
 
     // MARK: - Selection
 
-    private func handleClick(_ entry: Entry) {
-        let flags = NSEvent.modifierFlags
+    private func handleClick(_ entry: Entry, flags: NSEvent.ModifierFlags) {
         if flags.contains(.command) {
             if selection.contains(entry.id) {
                 selection.remove(entry.id)
