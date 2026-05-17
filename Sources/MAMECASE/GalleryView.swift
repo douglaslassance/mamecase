@@ -30,10 +30,20 @@ struct GalleryView: View {
 
     private var entries: [Entry] {
         let all = library.entries(for: system, hideMissing: hideMissing)
-        guard !searchText.isEmpty else { return all }
-        return all.filter {
-            $0.displayName.localizedCaseInsensitiveContains(searchText)
-                || $0.shortName.localizedCaseInsensitiveContains(searchText)
+        let trimmed = searchText.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return all }
+        // Lazy/fuzzy match: every whitespace-separated token in the query
+        // must appear (case-insensitively) somewhere in the entry's
+        // searchable fields. So `Spo cl` matches `Capcom Sports Club`.
+        let tokens = trimmed.lowercased()
+            .split(whereSeparator: { $0.isWhitespace })
+            .map(String.init)
+        return all.filter { entry in
+            var haystack = "\(entry.displayName) \(entry.shortName)"
+            if let y = entry.year { haystack += " \(y)" }
+            if let p = entry.publisher { haystack += " \(p)" }
+            let lower = haystack.lowercased()
+            return tokens.allSatisfy { lower.contains($0) }
         }
     }
 
