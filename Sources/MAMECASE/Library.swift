@@ -34,6 +34,13 @@ final class Library: ObservableObject {
     @Published var mameMissing: Bool = false
     @Published var brewAvailable: Bool = false
     @Published var installingMame: Bool = false
+    /// Set of media kinds we've already kicked off an archive-extraction
+    /// pass for; suppresses duplicate work across tiles.
+    @Published private(set) var extractingMedia: Set<MediaKind> = []
+    /// Bumped after each archive extraction so tile views re-query the
+    /// media cache. (The cached files appearing on disk doesn't trigger
+    /// SwiftUI re-renders by itself.)
+    @Published private(set) var mediaGeneration: Int = 0
 
     private var settingsCancellables: Set<AnyCancellable> = []
 
@@ -94,6 +101,11 @@ final class Library: ObservableObject {
             if let cached = ArcadeCache.load() {
                 self.arcadeEntries = cached
             }
+
+            // Kick off archive extraction for media packs (snap.7z,
+            // flyers.zip, etc.). No-op if the user has only loose files.
+            requestMediaExtraction(for: .snap)
+            requestMediaExtraction(for: .coverArt)
 
             await loadSoftwareLists(cfg: cfg)
             rebuildPresence()
@@ -269,6 +281,25 @@ final class Library: ObservableObject {
     func mediaURL(for entry: Entry, kind: MediaKind) -> URL? {
         guard let cfg = config else { return nil }
         return MediaProvider.url(for: entry, kind: kind, config: cfg)
+    }
+
+    /// Kick off a one-time bulk extraction for `kind` if archives exist on
+    /// disk. Cheap to call from many tiles; the actor inside MediaProvider
+    /// deduplicates work per archive.
+    func requestMediaExtraction(for kind: MediaKind) {
+        guard let cfg = config else { return }
+        if extractingMedia.contains(kind) { return }
+        extractingMedia.insert(kind)
+        arcadeStatus = "Extracting \(kind.label) archive…"
+        Task { [weak self] in
+            let didWork = await MediaProvider.shared.extractArchivesIfNeeded(kind: kind, config: cfg)
+            await MainActor.run {
+                guard let self else { return }
+                self.extractingMedia.remove(kind)
+                if self.extractingMedia.isEmpty { self.arcadeStatus = nil }
+                if didWork { self.mediaGeneration &+= 1 }
+            }
+        }
     }
 
     func launch(_ entry: Entry) {
