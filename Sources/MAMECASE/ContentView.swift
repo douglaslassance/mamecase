@@ -31,6 +31,8 @@ struct ContentView: View {
     @State private var searchText: String = ""
     @State private var brewPromptShown: Bool = false
     @State private var sevenZipPromptShown: Bool = false
+    @State private var showNewPlaylistSheet: Bool = false
+    @State private var newPlaylistName: String = ""
 
     private var systems: [SystemNode] { library.systems(hideMissing: !showMissing) }
 
@@ -49,7 +51,16 @@ struct ContentView: View {
         ]
     }
 
-    private var sidebarSystems: [SystemNode] { librarySystems + systems }
+    private var playlistSystems: [SystemNode] {
+        library.playlists.map { playlist in
+            SystemNode(id: "playlist/\(playlist.id)",
+                       displayName: playlist.name,
+                       count: playlist.entryIDs.count,
+                       kind: .cross(scope: .playlist(id: playlist.id)))
+        }
+    }
+
+    private var sidebarSystems: [SystemNode] { librarySystems + playlistSystems + systems }
 
     private var currentNode: SystemNode? {
         guard let id = selection else { return nil }
@@ -255,6 +266,33 @@ struct ContentView: View {
             Section("Library") {
                 ForEach(librarySystems) { node in sidebarRow(node) }
             }
+            Section {
+                ForEach(playlistSystems) { node in
+                    sidebarRow(node)
+                        .contextMenu {
+                            Button("Rename…") { /* TODO: rename sheet */ }
+                            Button(role: .destructive) {
+                                if case .cross(let scope) = node.kind,
+                                   case .playlist(let id) = scope {
+                                    library.deletePlaylist(id: id)
+                                }
+                            } label: { Text("Delete") }
+                        }
+                }
+            } header: {
+                HStack {
+                    Text("Playlists")
+                    Spacer()
+                    Button {
+                        newPlaylistName = ""
+                        showNewPlaylistSheet = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .buttonStyle(.plain)
+                    .help("New Playlist")
+                }
+            }
             if !systems.isEmpty {
                 Section("Systems") {
                     ForEach(systems) { node in sidebarRow(node) }
@@ -262,6 +300,29 @@ struct ContentView: View {
             }
         }
         .navigationTitle("Mamecase")
+        .sheet(isPresented: $showNewPlaylistSheet) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("New Playlist").font(.headline)
+                TextField("Name", text: $newPlaylistName)
+                    .textFieldStyle(.roundedBorder)
+                HStack {
+                    Spacer()
+                    Button("Cancel", role: .cancel) {
+                        showNewPlaylistSheet = false
+                    }
+                    .keyboardShortcut(.escape)
+                    Button("Create") {
+                        let p = library.createPlaylist(named: newPlaylistName)
+                        showNewPlaylistSheet = false
+                        selection = "playlist/\(p.id)"
+                    }
+                    .keyboardShortcut(.return)
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding(20)
+            .frame(width: 360)
+        }
         .frame(minWidth: 220)
         .overlay(alignment: .bottom) {
             if let status = library.arcadeStatus {

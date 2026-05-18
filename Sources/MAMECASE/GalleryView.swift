@@ -121,6 +121,24 @@ struct GalleryView: View {
                             Button(favoriteMenuTitle(for: entry)) {
                                 toggleFavorite(triggeredBy: entry)
                             }
+                            Menu("Add to Playlist") {
+                                ForEach(library.playlists) { p in
+                                    Button(p.name) {
+                                        library.addToPlaylist(p.id, entryIDs: batchIDs(triggeredBy: entry))
+                                    }
+                                }
+                                if !library.playlists.isEmpty { Divider() }
+                                Button("New Playlist…") {
+                                    let p = library.createPlaylist(named: "New Playlist")
+                                    library.addToPlaylist(p.id, entryIDs: batchIDs(triggeredBy: entry))
+                                }
+                            }
+                            if case .cross(let scope) = system.kind,
+                               case .playlist(let pid) = scope {
+                                Button("Remove from Playlist") {
+                                    library.removeFromPlaylist(pid, entryIDs: batchIDs(triggeredBy: entry))
+                                }
+                            }
                             Button(downloadMediaMenuTitle(for: entry)) {
                                 Task {
                                     let ids = batchIDs(triggeredBy: entry)

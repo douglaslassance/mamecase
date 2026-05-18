@@ -34,8 +34,8 @@ final class Library: ObservableObject {
     /// Entry IDs in launch order, most recent first. Populated by
     /// `launch(_:)`; persisted in Phase 4.
     @Published var recentlyLaunched: [Entry.ID] = RecentsStore.load()
-    /// User-curated lists of entries. Populated/persisted in Phase 5.
-    @Published var playlists: [Playlist] = []
+    /// User-curated lists of entries. Persisted as JSON.
+    @Published var playlists: [Playlist] = PlaylistsStore.load()
     @Published var isVerifyingAll: Bool = false
     /// In-memory mirror of `verifications.json` so we can decide cache hits
     /// without touching disk on every entry.
@@ -390,6 +390,43 @@ final class Library: ObservableObject {
     }
 
     // MARK: - Favorites
+
+    // MARK: - Playlists
+
+    @discardableResult
+    func createPlaylist(named name: String) -> Playlist {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        let final = trimmed.isEmpty ? "Untitled Playlist" : trimmed
+        let p = Playlist(id: UUID().uuidString, name: final, entryIDs: [])
+        playlists.append(p)
+        PlaylistsStore.save(playlists)
+        return p
+    }
+
+    func deletePlaylist(id: String) {
+        playlists.removeAll { $0.id == id }
+        PlaylistsStore.save(playlists)
+    }
+
+    func renamePlaylist(id: String, to name: String) {
+        guard let idx = playlists.firstIndex(where: { $0.id == id }) else { return }
+        playlists[idx].name = name
+        PlaylistsStore.save(playlists)
+    }
+
+    func addToPlaylist(_ playlistID: String, entryIDs: Set<Entry.ID>) {
+        guard let idx = playlists.firstIndex(where: { $0.id == playlistID }) else { return }
+        for id in entryIDs where !playlists[idx].entryIDs.contains(id) {
+            playlists[idx].entryIDs.append(id)
+        }
+        PlaylistsStore.save(playlists)
+    }
+
+    func removeFromPlaylist(_ playlistID: String, entryIDs: Set<Entry.ID>) {
+        guard let idx = playlists.firstIndex(where: { $0.id == playlistID }) else { return }
+        playlists[idx].entryIDs.removeAll { entryIDs.contains($0) }
+        PlaylistsStore.save(playlists)
+    }
 
     func toggleFavorite(_ entry: Entry) {
         if favorites.contains(entry.id) {
