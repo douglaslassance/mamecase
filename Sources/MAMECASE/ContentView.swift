@@ -23,15 +23,13 @@ struct ContentView: View {
     @AppStorage("showStatusBar") private var showStatusBar: Bool = true
     @AppStorage("showInspector") private var showInspector: Bool = false
     @AppStorage("selectedSystemID") private var persistedSystemID: String = ""
+    @AppStorage("controllerScheme") private var controllerScheme: String = ""
+    @AppStorage("shaderScheme") private var shaderScheme: String = ""
     @State private var selection: SystemNode.ID?
     @State private var entrySelection: Set<Entry.ID> = []
     @State private var searchText: String = ""
     @State private var brewPromptShown: Bool = false
     @State private var sevenZipPromptShown: Bool = false
-    /// Mirror of the persisted system→scheme map. Kept in sync via the
-    /// picker binding; written through to `ControllerSchemes` on edit.
-    @State private var schemeMap: [String: String] = ControllerSchemes.all()
-    @State private var shaderMap: [String: String] = ShaderSchemes.all()
 
     private var systems: [SystemNode] { library.systems(hideMissing: !showMissing) }
 
@@ -49,62 +47,8 @@ struct ContentView: View {
         return all.filter { entrySelection.contains($0.id) }
     }
 
-    private var currentSchemeForSystem: String {
-        guard let id = selection else { return "" }
-        return schemeMap[id] ?? ""
-    }
-
-    private var controllerDisplayName: String {
-        let s = currentSchemeForSystem
-        return s.isEmpty ? "Default" : s
-    }
-
-    /// Binding into the per-system scheme map. Writes update the in-memory
-    /// mirror (so the picker re-renders) and persist via `ControllerSchemes`.
-    private var schemeBinding: Binding<String> {
-        Binding(
-            get: { currentSchemeForSystem },
-            set: { newValue in
-                guard let id = selection else { return }
-                if newValue.isEmpty {
-                    schemeMap.removeValue(forKey: id)
-                } else {
-                    schemeMap[id] = newValue
-                }
-                ControllerSchemes.set(newValue, for: id)
-            }
-        )
-    }
-
-    private var currentShaderForSystem: String {
-        guard let id = selection else { return "" }
-        return shaderMap[id] ?? ""
-    }
-
-    private var shaderDisplayName: String {
-        let s = currentShaderForSystem
-        if s.isEmpty { return "Default" }
-        // Strip leading "glsl/" so the toolbar label stays short.
-        if let slash = s.firstIndex(of: "/") {
-            return String(s[s.index(after: slash)...])
-        }
-        return s
-    }
-
-    private var shaderBinding: Binding<String> {
-        Binding(
-            get: { currentShaderForSystem },
-            set: { newValue in
-                guard let id = selection else { return }
-                if newValue.isEmpty {
-                    shaderMap.removeValue(forKey: id)
-                } else {
-                    shaderMap[id] = newValue
-                }
-                ShaderSchemes.set(newValue, for: id)
-            }
-        )
-    }
+    private var controllerActive: Bool { !controllerScheme.isEmpty }
+    private var shaderActive: Bool { !shaderScheme.isEmpty }
 
     private var singleSelectedEntry: Entry? {
         selectedEntries.count == 1 ? selectedEntries[0] : nil
@@ -161,41 +105,43 @@ struct ContentView: View {
             }
             ToolbarItem(id: "controller-scheme", placement: .primaryAction) {
                 Menu {
-                    Picker("Controller profile", selection: schemeBinding) {
-                        Label("Default", systemImage: "gamecontroller").tag("")
+                    Picker("Controller profile", selection: $controllerScheme) {
+                        Text("Default").tag("")
                         if !library.controllerSchemes.isEmpty {
                             Divider()
                             ForEach(library.controllerSchemes, id: \.self) { name in
-                                Label(name, systemImage: "gamecontroller").tag(name)
+                                Text(name).tag(name)
                             }
                         }
                     }
                     .pickerStyle(.inline)
+                    .labelsHidden()
                 } label: {
-                    Label(controllerDisplayName, systemImage: "gamecontroller")
-                        .labelStyle(SpacedLabelStyle())
+                    Image(systemName: "gamecontroller")
+                        .foregroundStyle(controllerActive ? Color.accentColor : Color.primary)
                 }
-                .help("MAME -ctrlr profile (per system)")
-                .disabled(library.controllerSchemes.isEmpty || selection == nil)
+                .help("MAME -ctrlr profile")
+                .disabled(library.controllerSchemes.isEmpty)
             }
             ToolbarItem(id: "shader-scheme", placement: .primaryAction) {
                 Menu {
-                    Picker("Shader", selection: shaderBinding) {
-                        Label("Default", systemImage: "sparkles").tag("")
+                    Picker("Shader", selection: $shaderScheme) {
+                        Text("Default").tag("")
                         if !library.shaderSchemes.isEmpty {
                             Divider()
                             ForEach(library.shaderSchemes, id: \.self) { name in
-                                Label(displayShaderName(name), systemImage: "sparkles").tag(name)
+                                Text(displayShaderName(name)).tag(name)
                             }
                         }
                     }
                     .pickerStyle(.inline)
+                    .labelsHidden()
                 } label: {
-                    Label(shaderDisplayName, systemImage: "sparkles")
-                        .labelStyle(SpacedLabelStyle())
+                    Image(systemName: "sparkles")
+                        .foregroundStyle(shaderActive ? Color.accentColor : Color.primary)
                 }
-                .help("GLSL shader override (per system, slot 1)")
-                .disabled(library.shaderSchemes.isEmpty || selection == nil)
+                .help("GLSL shader override (slot 1)")
+                .disabled(library.shaderSchemes.isEmpty)
             }
         }
         .alert("Error",

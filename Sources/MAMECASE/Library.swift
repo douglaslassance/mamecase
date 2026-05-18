@@ -439,9 +439,8 @@ final class Library: ObservableObject {
 
     func launch(_ entry: Entry) {
         guard let cfg = config else { return }
-        let systemID = ControllerSchemes.systemID(for: entry)
-        let scheme = ControllerSchemes.scheme(for: systemID)
-        let shader = ShaderSchemes.scheme(for: systemID)
+        let scheme = UserDefaults.standard.string(forKey: "controllerScheme") ?? ""
+        let shader = UserDefaults.standard.string(forKey: "shaderScheme") ?? ""
         do {
             try MameLauncher.launch(executable: cfg.executable,
                                     args: MameLauncher.arguments(for: entry,

@@ -15,7 +15,7 @@ enum DisplayName {
         "euro": "🇪🇺", "europe": "🇪🇺", "pal": "🇪🇺",
         "usa": "🇺🇸", "us": "🇺🇸", "ntsc": "🇺🇸",
         "japan": "🇯🇵", "jpn": "🇯🇵", "jp": "🇯🇵",
-        "world": "🌐",
+        "world": "🌍",
         "uk": "🇬🇧", "england": "🇬🇧",
         "france": "🇫🇷", "fra": "🇫🇷", "fre": "🇫🇷",
         "germany": "🇩🇪", "ger": "🇩🇪", "deu": "🇩🇪",

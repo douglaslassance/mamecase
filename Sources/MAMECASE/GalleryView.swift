@@ -348,9 +348,8 @@ struct GalleryView: View {
     /// entry — mirrors what `Library.launch(_:)` actually runs.
     private func launchCommand(for entry: Entry) -> String {
         guard let cfg = library.config else { return entry.shortName }
-        let systemID = ControllerSchemes.systemID(for: entry)
-        let scheme = ControllerSchemes.scheme(for: systemID)
-        let shader = ShaderSchemes.scheme(for: systemID)
+        let scheme = UserDefaults.standard.string(forKey: "controllerScheme") ?? ""
+        let shader = UserDefaults.standard.string(forKey: "shaderScheme") ?? ""
         let args = MameLauncher.arguments(for: entry,
                                           romPaths: cfg.romPaths,
                                           controllerScheme: scheme,
