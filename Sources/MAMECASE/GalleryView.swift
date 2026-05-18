@@ -64,13 +64,24 @@ struct GalleryView: View {
                         })
                         .contentShape(Rectangle())
                         .overlay(
-                            MouseEventView { clickCount, flags in
-                                if clickCount >= 2 {
-                                    library.launch(entry)
-                                } else {
-                                    handleClick(entry, flags: flags)
+                            MouseEventView(
+                                onClick: { clickCount, flags in
+                                    if clickCount >= 2 {
+                                        library.launch(entry)
+                                    } else {
+                                        handleClick(entry, flags: flags)
+                                    }
+                                },
+                                onRightClick: {
+                                    // Right-click on an unselected tile makes
+                                    // it the sole selection before SwiftUI's
+                                    // context menu builds its items.
+                                    if !selection.contains(entry.id) {
+                                        selection = [entry.id]
+                                        anchor = entry.id
+                                    }
                                 }
-                            }
+                            )
                         )
                         .contextMenu {
                             Button("Launch") {
@@ -129,9 +140,8 @@ struct GalleryView: View {
                 }
             }
             .padding(16)
-            .overlay(
+            .background(
                 GalleryBackgroundView(
-                    tileFrames: Array(tileFrames.values),
                     onClick: { selection.removeAll() },
                     onDragChanged: { start, current, flags in
                         if marqueeStart == nil {
