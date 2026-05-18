@@ -327,11 +327,13 @@ final class Library: ObservableObject {
         return await HistoryProvider.shared.text(for: entry, historyPaths: cfg.historyPaths)
     }
 
-    /// Try to fetch this entry's media from an online source (libretro for
-    /// arcade today). Caches into the media cache on success.
+    /// Try to fetch this entry's media from an online source. No-op when
+    /// the user has disabled online fetching (Settings → Media → Sources).
     @discardableResult
     func fetchOnlineMedia(for entry: Entry, kind: MediaKind) async -> URL? {
-        await MediaProvider.shared.fetchOnline(for: entry, kind: kind)
+        let enabled = UserDefaults.standard.object(forKey: "onlineMediaFetchEnabled") as? Bool ?? false
+        guard enabled else { return nil }
+        return await MediaProvider.shared.fetchOnline(for: entry, kind: kind)
     }
 
     /// Clear cached media for the selected entries, then re-run the

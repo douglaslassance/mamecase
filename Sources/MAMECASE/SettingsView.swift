@@ -91,6 +91,7 @@ private struct GeneralSettingsTab: View {
 // MARK: - Media
 
 private struct MediaSettingsTab: View {
+    @EnvironmentObject var settings: AppSettings
     @State private var cacheSize: Int64? = nil
     @State private var isClearing: Bool = false
 
@@ -103,6 +104,17 @@ private struct MediaSettingsTab: View {
 
     var body: some View {
         Form {
+            Section {
+                Toggle("Download missing media online",
+                       isOn: $settings.onlineMediaFetchEnabled)
+            } header: {
+                Text("Sources")
+            } footer: {
+                Text("When on, missing flyers and snaps are fetched from libretro-thumbnails (arcade) and OpenVGDB (software). Off uses only local files.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Cache") {
                 LabeledContent("Location") {
                     Text("~/Library/Caches/Mamecase/media")

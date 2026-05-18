@@ -408,11 +408,18 @@ private struct EntryTile: View {
             }
             .aspectRatio(4.0/3.0, contentMode: .fit)
 
-            Text(entry.displayName)
-                .font(.caption.weight(.medium))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 4) {
+                let formatted = DisplayName.format(entry.displayName)
+                Text(formatted.name)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                if !formatted.flags.isEmpty {
+                    Text(formatted.flags)
+                        .font(.caption2)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             // Keep this row a fixed height so cards line up even when an
             // entry has no year/publisher (e.g. arcade).

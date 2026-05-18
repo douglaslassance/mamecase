@@ -59,7 +59,11 @@ struct StatusBar: View {
             return ""
         case 1:
             let e = selectedEntries[0]
-            var parts: [String] = ["\(e.displayName) · \(e.shortName)"]
+            let formatted = DisplayName.format(e.displayName)
+            let head = formatted.flags.isEmpty
+                ? "\(formatted.name) · \(e.shortName)"
+                : "\(formatted.name) \(formatted.flags) · \(e.shortName)"
+            var parts: [String] = [head]
             if let y = e.year, !y.isEmpty { parts.append(y) }
             if let p = e.publisher, !p.isEmpty { parts.append(p) }
             if !e.owned { parts.append("missing") }

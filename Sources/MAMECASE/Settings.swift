@@ -9,6 +9,7 @@ final class AppSettings: ObservableObject {
         static let mameExecutablePath = "mameExecutablePath"
         static let additionalRomPaths = "additionalRomPaths"
         static let romDownloadBaseURL = "romDownloadBaseURL"
+        static let onlineMediaFetchEnabled = "onlineMediaFetchEnabled"
     }
 
     static var defaultMameHomePath: String { AppSettingsDefaults.mameHomePath }
@@ -30,6 +31,10 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(romDownloadBaseURL, forKey: Keys.romDownloadBaseURL) }
     }
 
+    @Published var onlineMediaFetchEnabled: Bool {
+        didSet { UserDefaults.standard.set(onlineMediaFetchEnabled, forKey: Keys.onlineMediaFetchEnabled) }
+    }
+
     init() {
         let defaults = UserDefaults.standard
         // Empty string means "use the default" — the TextField will show the
@@ -38,6 +43,9 @@ final class AppSettings: ObservableObject {
         self.mameExecutablePath = defaults.string(forKey: Keys.mameExecutablePath) ?? ""
         self.additionalRomPaths = (defaults.array(forKey: Keys.additionalRomPaths) as? [String]) ?? []
         self.romDownloadBaseURL = defaults.string(forKey: Keys.romDownloadBaseURL) ?? ""
+        // Default off until local archive extraction is verified to work
+        // for the user's media packs.
+        self.onlineMediaFetchEnabled = defaults.object(forKey: Keys.onlineMediaFetchEnabled) as? Bool ?? false
     }
 
     /// Resolved ~/.mame URL from `mameHomePath`. Expands `~`.
