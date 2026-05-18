@@ -130,6 +130,46 @@ struct Playlist: Identifiable, Hashable, Codable {
     var entryIDs: [String]
 }
 
+/// Region buckets the user can filter the gallery by. `all` shows
+/// everything; the others match the corresponding region tokens in
+/// `DisplayName.format(...).flags`.
+enum RegionFilter: String, CaseIterable, Identifiable {
+    case all
+    case usa
+    case europe
+    case japan
+    case world
+
+    var id: String { rawValue }
+
+    var emoji: String {
+        switch self {
+        case .all: return "🌐"
+        case .usa: return "🇺🇸"
+        case .europe: return "🇪🇺"
+        case .japan: return "🇯🇵"
+        case .world: return "🌍"
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .all: return "All Regions"
+        case .usa: return "USA"
+        case .europe: return "Europe"
+        case .japan: return "Japan"
+        case .world: return "World"
+        }
+    }
+
+    /// Does this entry's display name pass the filter?
+    func matches(_ displayName: String) -> Bool {
+        guard self != .all else { return true }
+        let flags = DisplayName.format(displayName).flags
+        return flags.contains(emoji)
+    }
+}
+
 /// A kind of media we display in the gallery for an entry.
 ///
 /// Naming note: MAME's `artwork/` directory refers specifically to bezels

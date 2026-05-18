@@ -25,6 +25,7 @@ struct ContentView: View {
     @AppStorage("selectedSystemID") private var persistedSystemID: String = ""
     @AppStorage("controllerScheme") private var controllerScheme: String = ""
     @AppStorage("shaderScheme") private var shaderScheme: String = ""
+    @AppStorage("regionFilter") private var regionFilter: RegionFilter = .all
     @State private var selection: SystemNode.ID?
     @State private var entrySelection: Set<Entry.ID> = []
     @State private var searchText: String = ""
@@ -102,6 +103,16 @@ struct ContentView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .help("Media displayed in the gallery")
+            }
+            ToolbarItem(id: "region-filter", placement: .primaryAction) {
+                Picker("Region", selection: $regionFilter) {
+                    ForEach(RegionFilter.allCases) { region in
+                        Text(region.emoji).tag(region)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .help("Filter by region")
             }
             ToolbarItem(id: "controller-scheme", placement: .primaryAction) {
                 Menu {
@@ -246,6 +257,7 @@ struct ContentView: View {
             GalleryView(system: node,
                         hideMissing: !showMissing,
                         showFavoritesOnly: showFavoritesOnly,
+                        regionFilter: regionFilter,
                         searchText: $searchText,
                         selection: $entrySelection)
                 .id(node.id)

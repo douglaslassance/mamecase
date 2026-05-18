@@ -6,6 +6,7 @@ struct GalleryView: View {
     let system: SystemNode
     let hideMissing: Bool
     let showFavoritesOnly: Bool
+    let regionFilter: RegionFilter
     @Binding var searchText: String
     @Binding var selection: Set<Entry.ID>
 
@@ -34,6 +35,9 @@ struct GalleryView: View {
         if showFavoritesOnly {
             let favs = library.favorites
             all = all.filter { favs.contains($0.id) }
+        }
+        if regionFilter != .all {
+            all = all.filter { regionFilter.matches($0.displayName) }
         }
         let trimmed = searchText.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return all }
