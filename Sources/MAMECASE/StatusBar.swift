@@ -1,53 +1,54 @@
 import SwiftUI
 
-/// Bottom-of-window status bar. Shows a short description of the current
-/// selection on the left and the tile-size slider on the right.
+/// Bottom-of-window status bar.
+///
+/// Layout (matches macOS conventions):
+///   leading — selection summary (system / single entry / multi-select)
+///   trailing — async progress (Verify All, archive extract, brew install,
+///              media downloads) when present, then the tile-size slider
 struct StatusBar: View {
     let selectedEntries: [Entry]
     let totalCount: Int
     let systemName: String?
     let verifications: [Entry.ID: RomStatus]
-    /// Override line shown in place of the selection summary. Used for
-    /// progress text from long-running tasks (Verify All, archive extract).
+    /// Free-form line surfaced from long-running tasks. When non-nil it
+    /// appears between the selection summary and the slider with a
+    /// spinner.
     let busyStatus: String?
     @Binding var gridItemSize: Double
 
-    private static let sliderWidth: CGFloat = 160
-
     var body: some View {
-        HStack(spacing: 0) {
-            // Invisible column matching the slider's width on the trailing
-            // side so the centered info text stays centered within the bar.
-            Color.clear
-                .frame(width: Self.sliderWidth, height: 1)
+        HStack(spacing: 12) {
+            HStack(spacing: 6) {
+                if let status = selectedStatus {
+                    Image(systemName: status.systemImage)
+                        .foregroundStyle(status.tint)
+                        .help("ROM status: \(status.label)")
+                }
+                Text(leadingText)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
 
             Spacer(minLength: 0)
-            HStack(spacing: 6) {
-                if let busyStatus {
+
+            if let busyStatus {
+                HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
                     Text(busyStatus)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                } else {
-                    if let status = selectedStatus {
-                        Image(systemName: status.systemImage)
-                            .foregroundStyle(status.tint)
-                            .help("ROM status: \(status.label)")
-                    }
-                    Text(leadingText)
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
                 }
+                .layoutPriority(0.5)
             }
-            Spacer(minLength: 0)
 
             Slider(value: $gridItemSize, in: 120...320)
                 .controlSize(.small)
-                .frame(width: Self.sliderWidth)
+                .frame(width: 140)
                 .help("Tile size")
         }
         .padding(.horizontal, 12)
