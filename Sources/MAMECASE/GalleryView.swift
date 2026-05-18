@@ -406,40 +406,46 @@ private struct EntryTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(.quaternary)
-                if let image = preferredImage() {
-                    Image(nsImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } else {
-                    Image(systemName: "gamecontroller.fill")
-                        .font(.largeTitle)
-                        .foregroundStyle(.tertiary)
+            GeometryReader { geo in
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(.quaternary)
+                    if let image = preferredImage() {
+                        // Pin the image's frame to the GeometryReader's
+                        // size so a wide screenshot can't push the tile
+                        // out of its aspect ratio. `.clipped()` enforces
+                        // the boundary.
+                        Image(nsImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: geo.size.width, height: geo.size.height)
+                            .clipped()
+                    } else {
+                        Image(systemName: "gamecontroller.fill")
+                            .font(.largeTitle)
+                            .foregroundStyle(.tertiary)
+                    }
+                    if verifying {
+                        ProgressView()
+                            .controlSize(.small)
+                            .padding(6)
+                            .background(.thinMaterial, in: Circle())
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                            .padding(6)
+                    } else if let status {
+                        Image(systemName: status.systemImage)
+                            .font(.callout)
+                            .foregroundStyle(status.tint)
+                            .padding(4)
+                            .background(.thinMaterial, in: Circle())
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                            .padding(6)
+                            .help("ROM status: \(status.label)")
+                    }
                 }
-                if verifying {
-                    ProgressView()
-                        .controlSize(.small)
-                        .padding(6)
-                        .background(.thinMaterial, in: Circle())
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                        .padding(6)
-                } else if let status {
-                    Image(systemName: status.systemImage)
-                        .font(.callout)
-                        .foregroundStyle(status.tint)
-                        .padding(4)
-                        .background(.thinMaterial, in: Circle())
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                        .padding(6)
-                        .help("ROM status: \(status.label)")
-                }
+                .frame(width: geo.size.width, height: geo.size.height)
             }
             .aspectRatio(tileAspectRatio, contentMode: .fit)
-            // Clip overflow from images whose natural aspect doesn't match
-            // `tileAspectRatio` so every tile in a system renders at the
-            // same size.
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
             HStack(spacing: 4) {
