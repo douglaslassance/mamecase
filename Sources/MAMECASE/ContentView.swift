@@ -1,5 +1,18 @@
 import SwiftUI
 
+/// `Label` style that mirrors macOS toolbar layout but with breathable
+/// spacing between the icon and the title. Default `.titleAndIcon`
+/// gives a too-tight gap once the icon is an SF Symbol with intrinsic
+/// padding.
+private struct SpacedLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 6) {
+            configuration.icon
+            configuration.title
+        }
+    }
+}
+
 struct ContentView: View {
     @EnvironmentObject var library: Library
     @EnvironmentObject var settings: AppSettings
@@ -151,7 +164,7 @@ struct ContentView: View {
                     .pickerStyle(.inline)
                 } label: {
                     Label(controllerDisplayName, systemImage: "gamecontroller")
-                        .labelStyle(.titleAndIcon)
+                        .labelStyle(SpacedLabelStyle())
                 }
                 .help("MAME -ctrlr profile (per system)")
                 .disabled(library.controllerSchemes.isEmpty || selection == nil)
@@ -170,7 +183,7 @@ struct ContentView: View {
                     .pickerStyle(.inline)
                 } label: {
                     Label(shaderDisplayName, systemImage: "sparkles")
-                        .labelStyle(.titleAndIcon)
+                        .labelStyle(SpacedLabelStyle())
                 }
                 .help("GLSL shader override (per system, slot 1)")
                 .disabled(library.shaderSchemes.isEmpty || selection == nil)

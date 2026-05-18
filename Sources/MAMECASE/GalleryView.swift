@@ -129,8 +129,9 @@ struct GalleryView: View {
                 }
             }
             .padding(16)
-            .background(
+            .overlay(
                 GalleryBackgroundView(
+                    tileFrames: Array(tileFrames.values),
                     onClick: { selection.removeAll() },
                     onDragChanged: { start, current, flags in
                         if marqueeStart == nil {
@@ -499,12 +500,13 @@ private struct EntryTile: View {
         return NSImage(contentsOf: url)
     }
 
-    /// Aspect ratio for the artwork tile. Cover art is a uniform portrait
-    /// 3:4. Snap is per-system (defaults to 4:3) so e.g. Game Boy snaps
-    /// aren't forced into a landscape frame.
+    /// Aspect ratio for the artwork tile, picked per-kind and per-system
+    /// so e.g. Game Boy snaps aren't forced into a landscape frame and
+    /// jewel-case PS1 covers aren't squashed into the same shape as
+    /// Famicom boxes.
     private var tileAspectRatio: CGFloat {
         switch mediaKind {
-        case .coverArt: return 3.0/4.0
+        case .coverArt: return CoverArtAspectRatio.ratio(for: entry)
         case .snap: return SnapAspectRatio.ratio(for: entry)
         }
     }

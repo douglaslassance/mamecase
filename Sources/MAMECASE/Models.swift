@@ -48,6 +48,54 @@ enum SnapAspectRatio {
     }
 }
 
+/// Aspect-ratio overrides for cover/box art by software-list name. Boxes
+/// vary by system; we pick the Japanese release shape where regions
+/// disagree (US/EU boxes get cropped to fit). 3:4 portrait is the
+/// generic fallback.
+enum CoverArtAspectRatio {
+    static func ratio(for entry: Entry) -> CGFloat {
+        switch entry.kind {
+        case .arcade:
+            // Arcade "cover art" maps to flyers — usually portrait paper
+            // about 3:4.
+            return 3.0/4.0
+        case .software(let list):
+            switch list {
+            case "nes", "famicom":
+                return 5.0/7.0       // tall vertical Famicom box
+            case "snes", "sfx":
+                return 5.0/7.0
+            case "megadriv", "genesis":
+                return 5.0/7.0       // tall Mega Drive case
+            case "mastersys", "smsj":
+                return 5.0/7.0
+            case "n64":
+                return 4.0/5.0
+            case "saturn":
+                return 5.0/6.0       // CD jewel-case
+            case "dreamcast":
+                return 5.0/6.0
+            case "psx", "ps1":
+                return 5.0/6.0
+            case "ps2":
+                return 5.0/7.0
+            case "pcecd", "pce", "pcecdrom", "tg16":
+                return 5.0/6.0
+            case "gameboy", "gbcolor":
+                return 5.0/6.0       // boxed Game Boy / Game Boy Color
+            case "gba":
+                return 5.0/6.0
+            case "ngp", "ngpc":
+                return 5.0/6.0
+            case "vectrex":
+                return 4.0/5.0
+            default:
+                return 3.0/4.0
+            }
+        }
+    }
+}
+
 struct SystemNode: Identifiable, Hashable {
     let id: String
     let displayName: String
