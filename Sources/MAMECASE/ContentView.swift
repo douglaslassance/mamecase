@@ -113,25 +113,17 @@ struct ContentView: View {
                 .inspector(isPresented: $showInspector) {
                     EntryInspector(entry: singleSelectedEntry)
                         .inspectorColumnWidth(min: 240, ideal: 320, max: 480)
-                        .toolbar {
-                            Spacer()
-                            Button {
-                                showInspector.toggle()
-                            } label: {
-                                Label("Inspector", systemImage: "sidebar.right")
-                            }
-                        }
                 }
         }
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItem(id: "show-missing", placement: .primaryAction) {
                 Toggle(isOn: $showMissing) {
                     Label("Show Missing Files", systemImage: "receipt")
                 }
                 .toggleStyle(.button)
                 .help("Show entries you don't have a ROM for")
             }
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItem(id: "media-kind", placement: .primaryAction) {
                 Picker("Media", selection: $mediaKind) {
                     ForEach(MediaKind.allCases) { kind in
                         Image(systemName: kind.systemImage)
@@ -143,7 +135,7 @@ struct ContentView: View {
                 .labelsHidden()
                 .help("Media displayed in the gallery")
             }
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItem(id: "controller-scheme", placement: .primaryAction) {
                 Menu {
                     Picker("Controller profile", selection: schemeBinding) {
                         Label("Default", systemImage: "gamecontroller").tag("")
@@ -162,7 +154,7 @@ struct ContentView: View {
                 .help("MAME -ctrlr profile (per system)")
                 .disabled(library.controllerSchemes.isEmpty || selection == nil)
             }
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItem(id: "shader-scheme", placement: .primaryAction) {
                 Menu {
                     Picker("Shader", selection: shaderBinding) {
                         Label("Default", systemImage: "sparkles").tag("")
