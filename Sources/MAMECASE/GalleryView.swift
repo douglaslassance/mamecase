@@ -351,7 +351,7 @@ struct GalleryView: View {
                 guard let encoded = entry.shortName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
                     return nil
                 }
-                return URL(string: "https://www.arcade-database.com/?game=\(encoded)")
+                return URL(string: "https://adb.arcadeitalia.net/dettaglio_mame.php?game_name=\(encoded)")
             case .eBay:
                 let query = DisplayName.format(entry.displayName).name
                 guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
