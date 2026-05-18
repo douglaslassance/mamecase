@@ -29,6 +29,8 @@ struct MAMECASEApp: App {
         }
         .windowStyle(.titleBar)
         .commands {
+            // Mamecase is single-window; drop the default "New Window" item.
+            CommandGroup(replacing: .newItem) { }
             CommandMenu("View") {
                 Toggle("Inspector", isOn: $showInspector)
                     .keyboardShortcut("i", modifiers: [.command, .option])
