@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Resolves a local file URL for a given (entry, kind) pair.
@@ -233,7 +234,72 @@ actor MediaProvider {
                 }
             }
         }
+        if out.anySucceeded {
+            await purgePlaceholders(in: cacheDir)
+        }
         return out
+    }
+
+    /// Many art distributions ship a single "no image" placeholder
+    /// duplicated under every missing game's shortname. After extracting,
+    /// look for byte-identical duplicates and remove them so missing
+    /// entries fall through to the gamepad placeholder Mamecase already
+    /// shows.
+    ///
+    /// Two strategies, in order:
+    ///   1. Hash a user-named reference file (`placeholderBasename`,
+    ///      default `fh_l3`) and delete every other file with the same
+    ///      hash.
+    ///   2. Fall back to grouping by file size; any size shared by 50+
+    ///      files in the same directory is treated as a placeholder.
+    private func purgePlaceholders(in dir: URL) async {
+        await Task.detached(priority: .utility) {
+            MediaProvider.purgePlaceholdersImpl(in: dir)
+        }.value
+    }
+
+    private static func purgePlaceholdersImpl(in dir: URL) {
+        let fm = FileManager.default
+        guard let enumerator = fm.enumerator(at: dir,
+                                             includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
+                                             options: [.skipsHiddenFiles])
+        else { return }
+
+        var files: [(URL, Int)] = []
+        for case let url as URL in enumerator {
+            let vals = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+            guard vals?.isRegularFile == true, let size = vals?.fileSize else { continue }
+            let ext = url.pathExtension.lowercased()
+            guard ext == "png" || ext == "jpg" || ext == "jpeg" else { continue }
+            files.append((url, size))
+        }
+        guard !files.isEmpty else { return }
+
+        let placeholderBasename = UserDefaults.standard.string(forKey: "placeholderBasename") ?? "fh_l3"
+
+        // Strategy 1: hash a named reference file, delete matches.
+        if let reference = files.first(where: { $0.0.deletingPathExtension().lastPathComponent == placeholderBasename }),
+           let refHash = sha256(of: reference.0) {
+            var removed = 0
+            for (url, _) in files {
+                guard let h = sha256(of: url), h == refHash else { continue }
+                try? fm.removeItem(at: url)
+                removed += 1
+            }
+            if removed > 0 { return }
+        }
+
+        // Strategy 2: group by size, drop the dominant bucket (≥ 50).
+        var bySize: [Int: [URL]] = [:]
+        for (url, size) in files { bySize[size, default: []].append(url) }
+        for (_, urls) in bySize where urls.count >= 50 {
+            for url in urls { try? fm.removeItem(at: url) }
+        }
+    }
+
+    private static func sha256(of url: URL) -> String? {
+        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     // MARK: - Phase 1: loose files

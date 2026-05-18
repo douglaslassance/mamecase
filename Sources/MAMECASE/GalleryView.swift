@@ -120,21 +120,38 @@ struct GalleryView: View {
                                     copyToPasteboard(launchCommand(for: entry))
                                 }
                                 .disabled(library.config == nil)
+                                Divider()
+                                Button("Search on eBay") {
+                                    openSearch(for: entry, on: .eBay)
+                                }
                             }
                         }
                 }
             }
             .padding(16)
+            .background(
+                GalleryBackgroundView(
+                    onClick: { selection.removeAll() },
+                    onDragChanged: { start, current, flags in
+                        if marqueeStart == nil {
+                            marqueeStart = start
+                            marqueeAdditive = flags.contains(.command)
+                            marqueeBase = marqueeAdditive ? selection : []
+                        }
+                        marqueeCurrent = current
+                        updateMarqueeSelection()
+                    },
+                    onDragEnded: {
+                        marqueeStart = nil
+                        marqueeCurrent = nil
+                        marqueeBase = []
+                        marqueeAdditive = false
+                    }
+                )
+            )
         }
         .coordinateSpace(name: "gallery")
         .onPreferenceChange(TileFramesKey.self) { tileFrames = $0 }
-        // Tap clears the selection. Drag runs the marquee. Both attached
-        // via `simultaneousGesture` so the drag gesture doesn't swallow
-        // sub-threshold taps. Taps on tiles are intercepted by
-        // `MouseEventView` at the AppKit layer, so this only fires for
-        // clicks in empty gallery space.
-        .simultaneousGesture(TapGesture().onEnded { selection.removeAll() })
-        .gesture(marqueeGesture)
         .overlay(alignment: .topLeading) {
             if let rect = marqueeRect {
                 Rectangle()
@@ -267,6 +284,27 @@ struct GalleryView: View {
         return parts.map(shellQuote).joined(separator: " ")
     }
 
+    private enum SearchTarget {
+        case eBay
+
+        func url(for query: String) -> URL? {
+            guard let q = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+                return nil
+            }
+            switch self {
+            case .eBay: return URL(string: "https://www.ebay.com/sch/i.html?_nkw=\(q)")
+            }
+        }
+    }
+
+    private func openSearch(for entry: Entry, on target: SearchTarget) {
+        // Strip parenthetical tags so we search the canonical title.
+        let query = DisplayName.format(entry.displayName).name
+        if let url = target.url(for: query) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     private func shellQuote(_ s: String) -> String {
         let safe = CharacterSet(charactersIn:
             "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/_-.:=,@%+")
@@ -293,25 +331,6 @@ struct GalleryView: View {
     // MARK: - Selection
 
     // MARK: - Marquee selection
-
-    private var marqueeGesture: some Gesture {
-        DragGesture(minimumDistance: 4, coordinateSpace: .named("gallery"))
-            .onChanged { value in
-                if marqueeStart == nil {
-                    marqueeStart = value.startLocation
-                    marqueeAdditive = NSEvent.modifierFlags.contains(.command)
-                    marqueeBase = marqueeAdditive ? selection : []
-                }
-                marqueeCurrent = value.location
-                updateMarqueeSelection()
-            }
-            .onEnded { _ in
-                marqueeStart = nil
-                marqueeCurrent = nil
-                marqueeBase = []
-                marqueeAdditive = false
-            }
-    }
 
     private func updateMarqueeSelection() {
         guard let rect = marqueeRect else { return }
@@ -407,17 +426,17 @@ private struct EntryTile: View {
                         .help("ROM status: \(status.label)")
                 }
             }
-            .aspectRatio(4.0/3.0, contentMode: .fit)
+            .aspectRatio(mediaKind == .coverArt ? 3.0/4.0 : 4.0/3.0, contentMode: .fit)
 
             HStack(spacing: 4) {
                 let formatted = DisplayName.format(entry.displayName)
                 Text(formatted.name)
-                    .font(.caption.weight(.medium))
+                    .font(.subheadline.weight(.medium))
                     .lineLimit(1)
                     .truncationMode(.tail)
                 if !formatted.flags.isEmpty {
                     Text(formatted.flags)
-                        .font(.caption2)
+                        .font(.subheadline)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -449,7 +468,7 @@ private struct EntryTile: View {
         )
         .opacity(entry.owned ? 1.0 : 0.45)
         .help("\(entry.displayName) — \(entry.shortName)\(entry.owned ? "" : " (missing)")")
-        .task(id: "\(entry.id)/\(generation)") {
+        .task(id: "\(entry.id)/\(generation)/\(mediaKind.rawValue)") {
             await resolveMedia()
         }
     }
@@ -475,14 +494,8 @@ private struct EntryTile: View {
     }
 
     private func preferredImage() -> NSImage? {
-        switch mediaKind {
-        case .coverArt:
-            if let coverURL, let img = NSImage(contentsOf: coverURL) { return img }
-            if let snapURL, let img = NSImage(contentsOf: snapURL) { return img }
-        case .snap:
-            if let snapURL, let img = NSImage(contentsOf: snapURL) { return img }
-            if let coverURL, let img = NSImage(contentsOf: coverURL) { return img }
-        }
-        return nil
+        let url: URL? = (mediaKind == .coverArt) ? coverURL : snapURL
+        guard let url else { return nil }
+        return NSImage(contentsOf: url)
     }
 }
