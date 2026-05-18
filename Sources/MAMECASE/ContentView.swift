@@ -34,9 +34,38 @@ struct ContentView: View {
 
     private var systems: [SystemNode] { library.systems(hideMissing: !showMissing) }
 
+    private var librarySystems: [SystemNode] {
+        let total = library.arcadeEntries.count
+            + library.softwareLists.reduce(0) { $0 + $1.entries.count }
+        return [
+            SystemNode(id: "library/all",
+                       displayName: "All",
+                       count: total,
+                       kind: .cross(scope: .all)),
+            SystemNode(id: "library/recent",
+                       displayName: "Recent",
+                       count: library.recentlyLaunched.count,
+                       kind: .cross(scope: .recent)),
+        ]
+    }
+
+    private var sidebarSystems: [SystemNode] { librarySystems + systems }
+
     private var currentNode: SystemNode? {
         guard let id = selection else { return nil }
-        return systems.first(where: { $0.id == id })
+        return sidebarSystems.first(where: { $0.id == id })
+    }
+
+    @ViewBuilder
+    private func sidebarRow(_ node: SystemNode) -> some View {
+        HStack {
+            Text(node.displayName).lineLimit(1)
+            Spacer()
+            Text("\(node.count)")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+        .tag(Optional(node.id))
     }
 
     /// Resolve currently-selected entry IDs to full `Entry` records using
@@ -188,14 +217,14 @@ struct ContentView: View {
                 sevenZipPromptShown = true
             }
         }
-        .onChange(of: systems) { _, newSystems in
+        .onChange(of: sidebarSystems) { _, newSystems in
             restoreSelectionIfNeeded(in: newSystems)
         }
         .onChange(of: selection) { _, new in
             if let new { persistedSystemID = new }
         }
         .onAppear {
-            restoreSelectionIfNeeded(in: systems)
+            restoreSelectionIfNeeded(in: sidebarSystems)
         }
     }
 
@@ -223,16 +252,13 @@ struct ContentView: View {
 
     private var sidebar: some View {
         List(selection: $selection) {
-            ForEach(systems) { node in
-                HStack {
-                    Text(node.displayName)
-                        .lineLimit(1)
-                    Spacer()
-                    Text("\(node.count)")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+            Section("Library") {
+                ForEach(librarySystems) { node in sidebarRow(node) }
+            }
+            if !systems.isEmpty {
+                Section("Systems") {
+                    ForEach(systems) { node in sidebarRow(node) }
                 }
-                .tag(Optional(node.id))
             }
         }
         .navigationTitle("Mamecase")

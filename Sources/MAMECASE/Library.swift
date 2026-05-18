@@ -33,7 +33,7 @@ final class Library: ObservableObject {
     @Published var favorites: Set<Entry.ID> = FavoritesStore.load()
     /// Entry IDs in launch order, most recent first. Populated by
     /// `launch(_:)`; persisted in Phase 4.
-    @Published var recentlyLaunched: [Entry.ID] = []
+    @Published var recentlyLaunched: [Entry.ID] = RecentsStore.load()
     /// User-curated lists of entries. Populated/persisted in Phase 5.
     @Published var playlists: [Playlist] = []
     @Published var isVerifyingAll: Bool = false
@@ -478,6 +478,8 @@ final class Library: ObservableObject {
                                                                  controllerScheme: scheme,
                                                                  shader: shader),
                                     workingDirectory: cfg.homePath)
+            recentlyLaunched = RecentsStore.bumped(entry.id, current: recentlyLaunched)
+            RecentsStore.save(recentlyLaunched)
         } catch {
             self.loadError = "Launch failed: \(error.localizedDescription)"
         }
