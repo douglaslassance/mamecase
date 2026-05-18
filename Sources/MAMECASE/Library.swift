@@ -297,7 +297,7 @@ final class Library: ObservableObject {
     func indexArcade() async {
         guard let cfg = config, !arcadeIndexing else { return }
         arcadeIndexing = true
-        arcadeStatus = "Running mame -listfull…"
+        arcadeStatus = "Running mame -listxml…"
         defer {
             arcadeIndexing = false
             arcadeStatus = nil
@@ -366,6 +366,9 @@ final class Library: ObservableObject {
                 if result.anySucceeded { self.mediaGeneration &+= 1 }
                 if result.needsSevenZip {
                     self.sevenZipMissing = true
+                }
+                if let pointer = result.lfsPointers.first {
+                    self.loadError = "Looks like \(pointer.lastPathComponent) is a Git LFS pointer. Run `git lfs pull` in \(pointer.deletingLastPathComponent().path) and re-launch."
                 }
             }
         }

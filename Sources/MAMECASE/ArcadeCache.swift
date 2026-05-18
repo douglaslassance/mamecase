@@ -7,6 +7,8 @@ enum ArcadeCache {
     private struct Record: Codable {
         let shortName: String
         let displayName: String
+        let year: String?
+        let manufacturer: String?
     }
 
     private static let fileName = "arcade-index.json"
@@ -26,15 +28,18 @@ enum ArcadeCache {
             Entry(kind: .arcade,
                   shortName: $0.shortName,
                   displayName: $0.displayName,
-                  year: nil,
-                  publisher: nil)
+                  year: $0.year,
+                  publisher: $0.manufacturer)
         }
     }
 
     static func save(_ entries: [Entry]) {
         let records = entries.compactMap { entry -> Record? in
             guard case .arcade = entry.kind else { return nil }
-            return Record(shortName: entry.shortName, displayName: entry.displayName)
+            return Record(shortName: entry.shortName,
+                          displayName: entry.displayName,
+                          year: entry.year,
+                          manufacturer: entry.publisher)
         }
         guard let data = try? JSONEncoder().encode(records) else { return }
         try? data.write(to: cacheURL, options: .atomic)

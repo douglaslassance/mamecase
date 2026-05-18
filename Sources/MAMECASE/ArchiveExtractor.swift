@@ -4,6 +4,7 @@ enum ArchiveError: LocalizedError {
     case unsupported(String)
     case noExtractor(String)
     case extractFailed(Int32, String)
+    case gitLFSPointer(URL)
 
     var errorDescription: String? {
         switch self {
@@ -11,6 +12,8 @@ enum ArchiveError: LocalizedError {
         case .noExtractor(let tool): return "Couldn't find `\(tool)` on disk."
         case .extractFailed(let code, let stderr):
             return "Extraction failed (exit \(code)): \(stderr.isEmpty ? "no output" : stderr)"
+        case .gitLFSPointer(let url):
+            return "\(url.lastPathComponent) is a Git LFS pointer; run `git lfs pull` in \(url.deletingLastPathComponent().path)."
         }
     }
 }
@@ -28,6 +31,7 @@ enum ArchiveError: LocalizedError {
 /// keeps the cache layout flat regardless of how the archive was packed.
 enum ArchiveExtractor {
     static func extractAll(archive: URL, into cacheDir: URL) throws {
+        try guardAgainstLFSPointer(archive)
         let ext = archive.pathExtension.lowercased()
         let staging = try makeStagingDir()
         defer { try? FileManager.default.removeItem(at: staging) }
@@ -86,6 +90,20 @@ enum ArchiveExtractor {
             let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
             let err = String(data: errData, encoding: .utf8) ?? ""
             throw ArchiveError.extractFailed(p.terminationStatus, err)
+        }
+    }
+
+    /// A pointer file (small, plain text starting with the LFS spec line)
+    /// is a stand-in for an object that hasn't been pulled. Trying to feed
+    /// it to unzip/7zz fails with cryptic output; throw a clearer error.
+    private static func guardAgainstLFSPointer(_ url: URL) throws {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
+        let size = (attrs?[.size] as? Int) ?? 0
+        guard size > 0, size < 4096 else { return }
+        guard let data = try? Data(contentsOf: url),
+              let text = String(data: data.prefix(256), encoding: .utf8) else { return }
+        if text.hasPrefix("version https://git-lfs.github.com/spec/") {
+            throw ArchiveError.gitLFSPointer(url)
         }
     }
 

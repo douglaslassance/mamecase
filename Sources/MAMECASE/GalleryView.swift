@@ -128,11 +128,12 @@ struct GalleryView: View {
         }
         .coordinateSpace(name: "gallery")
         .onPreferenceChange(TileFramesKey.self) { tileFrames = $0 }
-        .background(
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture { selection.removeAll() }
-        )
+        // Tap clears the selection. Drag runs the marquee. Both attached
+        // via `simultaneousGesture` so the drag gesture doesn't swallow
+        // sub-threshold taps. Taps on tiles are intercepted by
+        // `MouseEventView` at the AppKit layer, so this only fires for
+        // clicks in empty gallery space.
+        .simultaneousGesture(TapGesture().onEnded { selection.removeAll() })
         .gesture(marqueeGesture)
         .overlay(alignment: .topLeading) {
             if let rect = marqueeRect {

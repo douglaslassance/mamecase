@@ -1,36 +1,17 @@
 import Foundation
 
-/// Indexes arcade machines by running `mame -listfull` and (optionally)
-/// filtering to ROMs the user actually has on disk in `rompath`.
+/// Indexes arcade machines by running `mame -listxml` and parsing the
+/// resulting XML stream. We use `-listxml` rather than `-listfull` so we
+/// get year + manufacturer per machine in addition to the description.
 enum ArcadeIndex {
-    /// Run `mame -listfull` and return every machine MAME knows about.
-    /// Format per line (after header): `shortname    "Display Name"`.
     static func listAll(executable: String) async throws -> [Entry] {
-        let output = try await runCapturing(executable: executable, args: ["-listfull"])
-        var entries: [Entry] = []
-        entries.reserveCapacity(50_000)
-
-        for line in output.split(separator: "\n", omittingEmptySubsequences: true) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty { continue }
-            // Skip header line: "Name:             Description:"
-            if trimmed.hasPrefix("Name:") { continue }
-
-            guard let firstSpace = trimmed.firstIndex(where: { $0.isWhitespace }) else { continue }
-            let name = String(trimmed[..<firstSpace])
-            var rest = String(trimmed[firstSpace...]).trimmingCharacters(in: .whitespaces)
-            if rest.hasPrefix("\"") { rest.removeFirst() }
-            if rest.hasSuffix("\"") { rest.removeLast() }
-
-            entries.append(Entry(
-                kind: .arcade,
-                shortName: name,
-                displayName: rest.isEmpty ? name : rest,
-                year: nil,
-                publisher: nil
-            ))
-        }
-        return entries
+        let dump = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mame-listxml-\(UUID().uuidString).xml")
+        defer { try? FileManager.default.removeItem(at: dump) }
+        try await captureToFile(executable: executable,
+                                args: ["-listxml"],
+                                destination: dump)
+        return ListXMLParser.parse(url: dump)
     }
 
     /// Filters `entries` to those whose ROM is present somewhere in `romPaths`.
@@ -60,27 +41,109 @@ enum ArcadeIndex {
         return result
     }
 
-    // MARK: - Process
+    // MARK: - Process plumbing
 
-    private static func runCapturing(executable: String, args: [String]) async throws -> String {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
+    /// Run `executable args…` and pipe stdout into `destination`. Used for
+    /// `-listxml` which produces hundreds of MB of output we don't want to
+    /// hold in memory.
+    private static func captureToFile(executable: String,
+                                      args: [String],
+                                      destination: URL) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             DispatchQueue.global(qos: .userInitiated).async {
-                let p = Process()
-                p.executableURL = URL(fileURLWithPath: executable)
-                p.arguments = args
-                let pipe = Pipe()
-                p.standardOutput = pipe
-                p.standardError = Pipe()
+                FileManager.default.createFile(atPath: destination.path, contents: nil)
+                let handle: FileHandle
                 do {
-                    try p.run()
+                    handle = try FileHandle(forWritingTo: destination)
                 } catch {
                     continuation.resume(throwing: error)
                     return
                 }
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: executable)
+                p.arguments = args
+                p.standardOutput = handle
+                p.standardError = Pipe()
+                do { try p.run() } catch {
+                    try? handle.close()
+                    continuation.resume(throwing: error)
+                    return
+                }
                 p.waitUntilExit()
-                continuation.resume(returning: String(data: data, encoding: .utf8) ?? "")
+                try? handle.close()
+                continuation.resume()
             }
         }
+    }
+}
+
+// MARK: - SAX parser
+
+private final class ListXMLParser: NSObject, XMLParserDelegate {
+    private var entries: [Entry] = []
+    private var currentText: String = ""
+
+    private var currentName: String?
+    private var currentIsDevice: Bool = false
+    private var currentRunnable: Bool = true
+    private var currentDescription: String?
+    private var currentYear: String?
+    private var currentManufacturer: String?
+
+    static func parse(url: URL) -> [Entry] {
+        guard let parser = XMLParser(contentsOf: url) else { return [] }
+        let delegate = ListXMLParser()
+        parser.delegate = delegate
+        parser.shouldResolveExternalEntities = false
+        parser.parse()
+        return delegate.entries
+    }
+
+    func parser(_ parser: XMLParser,
+                didStartElement elementName: String,
+                namespaceURI: String?,
+                qualifiedName qName: String?,
+                attributes attributeDict: [String: String] = [:]) {
+        currentText = ""
+        if elementName == "machine" {
+            currentName = attributeDict["name"]
+            currentIsDevice = attributeDict["isdevice"] == "yes"
+            currentRunnable = attributeDict["runnable"] != "no"
+            currentDescription = nil
+            currentYear = nil
+            currentManufacturer = nil
+        }
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        currentText += string
+    }
+
+    func parser(_ parser: XMLParser,
+                didEndElement elementName: String,
+                namespaceURI: String?,
+                qualifiedName qName: String?) {
+        let text = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch elementName {
+        case "description":
+            if currentDescription == nil { currentDescription = text }
+        case "year":
+            if currentYear == nil { currentYear = text }
+        case "manufacturer":
+            if currentManufacturer == nil { currentManufacturer = text }
+        case "machine":
+            if let name = currentName, !currentIsDevice, currentRunnable {
+                entries.append(Entry(
+                    kind: .arcade,
+                    shortName: name,
+                    displayName: currentDescription ?? name,
+                    year: currentYear,
+                    publisher: currentManufacturer
+                ))
+            }
+            currentName = nil
+        default: break
+        }
+        currentText = ""
     }
 }

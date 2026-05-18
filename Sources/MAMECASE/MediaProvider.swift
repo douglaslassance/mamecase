@@ -182,6 +182,9 @@ actor MediaProvider {
     struct ExtractionResult {
         var anySucceeded: Bool = false
         var needsSevenZip: Bool = false
+        /// Archives that look like Git LFS pointer files (e.g. an `~/.mame`
+        /// repo where `git lfs pull` hasn't been run).
+        var lfsPointers: [URL] = []
     }
 
     /// Extract every sibling archive for `kind` once (idempotent per
@@ -198,23 +201,36 @@ actor MediaProvider {
                 if await task.value { out.anySucceeded = true }
                 continue
             }
-            let task = Task.detached(priority: .utility) {
+            enum Outcome: Sendable { case success, lfsPointer, otherFailure }
+            let task = Task.detached(priority: .utility) { () -> Outcome in
                 do {
                     try ArchiveExtractor.extractAll(archive: archive, into: cacheDir)
-                    return true
+                    return .success
+                } catch ArchiveError.gitLFSPointer {
+                    return .lfsPointer
                 } catch {
-                    return false
+                    return .otherFailure
                 }
             }
-            inFlight[archive] = task
-            let ok = await task.value
-            inFlight.removeValue(forKey: archive)
-            if ok {
+            let outcome: Outcome
+            do {
+                let proxy = Task<Bool, Never> { await task.value == .success }
+                inFlight[archive] = proxy
+                outcome = await task.value
+                _ = await proxy.value
+                inFlight.removeValue(forKey: archive)
+            }
+            switch outcome {
+            case .success:
                 extracted.insert(archive)
                 out.anySucceeded = true
-            } else if archive.pathExtension.lowercased() == "7z",
-                      !ArchiveExtractor.sevenZipAvailable() {
-                out.needsSevenZip = true
+            case .lfsPointer:
+                out.lfsPointers.append(archive)
+            case .otherFailure:
+                if archive.pathExtension.lowercased() == "7z",
+                   !ArchiveExtractor.sevenZipAvailable() {
+                    out.needsSevenZip = true
+                }
             }
         }
         return out
