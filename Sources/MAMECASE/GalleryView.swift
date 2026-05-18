@@ -141,28 +141,13 @@ struct GalleryView: View {
                                 }
                                 .disabled(library.config == nil)
                                 Divider()
-                                Menu("Search Online") {
-                                    Button("Internet Archive") {
-                                        openSearch(for: entry, on: .internetArchive)
+                                if case .arcade = entry.kind {
+                                    Button("Open in Arcade Database") {
+                                        openSearch(for: entry, on: .arcadeDatabase)
                                     }
-                                    if case .arcade = entry.kind {
-                                        Button("arcade-history.com") {
-                                            openSearch(for: entry, on: .arcadeHistory)
-                                        }
-                                    }
-                                    Button("MobyGames") {
-                                        openSearch(for: entry, on: .mobyGames)
-                                    }
-                                    Button("TheGamesDB") {
-                                        openSearch(for: entry, on: .gamesDB)
-                                    }
-                                    Button("YouTube") {
-                                        openSearch(for: entry, on: .youTube)
-                                    }
-                                    Divider()
-                                    Button("eBay") {
-                                        openSearch(for: entry, on: .eBay)
-                                    }
+                                }
+                                Button("Search on eBay") {
+                                    openSearch(for: entry, on: .eBay)
                                 }
                             }
                         }
@@ -355,38 +340,30 @@ struct GalleryView: View {
     }
 
     private enum SearchTarget {
+        /// arcade-database.com lookup by MAME short name (arcade only).
+        case arcadeDatabase
+        /// eBay free-text search by cleaned display name.
         case eBay
-        case internetArchive
-        case arcadeHistory
-        case mobyGames
-        case gamesDB
-        case youTube
 
-        func url(for query: String) -> URL? {
-            guard let q = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
-                return nil
-            }
+        func url(for entry: Entry) -> URL? {
             switch self {
+            case .arcadeDatabase:
+                guard let encoded = entry.shortName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+                    return nil
+                }
+                return URL(string: "https://www.arcade-database.com/?game=\(encoded)")
             case .eBay:
-                return URL(string: "https://www.ebay.com/sch/i.html?_nkw=\(q)")
-            case .internetArchive:
-                return URL(string: "https://archive.org/search?query=\(q)")
-            case .arcadeHistory:
-                return URL(string: "https://www.arcade-history.com/index.php?page=search&keyword=\(q)")
-            case .mobyGames:
-                return URL(string: "https://www.mobygames.com/search/?q=\(q)")
-            case .gamesDB:
-                return URL(string: "https://thegamesdb.net/search.php?name=\(q)")
-            case .youTube:
-                return URL(string: "https://www.youtube.com/results?search_query=\(q)+gameplay")
+                let query = DisplayName.format(entry.displayName).name
+                guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+                    return nil
+                }
+                return URL(string: "https://www.ebay.com/sch/i.html?_nkw=\(encoded)")
             }
         }
     }
 
     private func openSearch(for entry: Entry, on target: SearchTarget) {
-        // Strip parenthetical tags so we search the canonical title.
-        let query = DisplayName.format(entry.displayName).name
-        if let url = target.url(for: query) {
+        if let url = target.url(for: entry) {
             NSWorkspace.shared.open(url)
         }
     }
