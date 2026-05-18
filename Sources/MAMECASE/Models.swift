@@ -22,6 +22,32 @@ struct Entry: Identifiable, Hashable, Sendable {
     }
 }
 
+/// Aspect-ratio overrides for snap art by software-list name. Anything
+/// not listed falls back to 4:3, which covers most arcade cabinets and
+/// console TV outputs.
+enum SnapAspectRatio {
+    static func ratio(for entry: Entry) -> CGFloat {
+        switch entry.kind {
+        case .arcade: return 4.0/3.0
+        case .software(let list):
+            switch list {
+            case "gameboy", "gbcolor", "supergb", "supergb2":
+                return 10.0/9.0
+            case "gba":
+                return 3.0/2.0
+            case "ngp", "ngpc":
+                return 20.0/19.0
+            case "lynx":
+                return 1.6
+            case "vectrex":
+                return 3.0/4.0
+            default:
+                return 4.0/3.0
+            }
+        }
+    }
+}
+
 struct SystemNode: Identifiable, Hashable {
     let id: String
     let displayName: String

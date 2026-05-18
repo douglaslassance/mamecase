@@ -15,7 +15,7 @@ enum ArcadeCache {
 
     private static var cacheURL: URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        let dir = caches.appendingPathComponent("MAMECASE", isDirectory: true)
+        let dir = caches.appendingPathComponent("Mamecase", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent(fileName)
     }

@@ -426,7 +426,7 @@ private struct EntryTile: View {
                         .help("ROM status: \(status.label)")
                 }
             }
-            .aspectRatio(mediaKind == .coverArt ? 3.0/4.0 : 4.0/3.0, contentMode: .fit)
+            .aspectRatio(tileAspectRatio, contentMode: .fit)
 
             HStack(spacing: 4) {
                 let formatted = DisplayName.format(entry.displayName)
@@ -497,5 +497,15 @@ private struct EntryTile: View {
         let url: URL? = (mediaKind == .coverArt) ? coverURL : snapURL
         guard let url else { return nil }
         return NSImage(contentsOf: url)
+    }
+
+    /// Aspect ratio for the artwork tile. Cover art is a uniform portrait
+    /// 3:4. Snap is per-system (defaults to 4:3) so e.g. Game Boy snaps
+    /// aren't forced into a landscape frame.
+    private var tileAspectRatio: CGFloat {
+        switch mediaKind {
+        case .coverArt: return 3.0/4.0
+        case .snap: return SnapAspectRatio.ratio(for: entry)
+        }
     }
 }

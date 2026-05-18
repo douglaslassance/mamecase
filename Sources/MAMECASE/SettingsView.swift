@@ -11,7 +11,7 @@ struct SettingsView: View {
             MediaSettingsTab()
                 .tabItem { Label("Media", systemImage: "photo.on.rectangle.angled") }
         }
-        .frame(width: 560, height: 480)
+        .frame(width: 600, height: 640)
     }
 }
 
@@ -27,6 +27,8 @@ private struct GeneralSettingsTab: View {
                     HStack(spacing: 8) {
                         TextField("", text: $settings.mameHomePath, prompt: Text("~/.mame"))
                             .textFieldStyle(.roundedBorder)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         Button("Choose…") { pickDirectory($settings.mameHomePath) }
                     }
                 }
@@ -34,6 +36,8 @@ private struct GeneralSettingsTab: View {
                     HStack(spacing: 8) {
                         TextField("", text: $settings.mameExecutablePath, prompt: Text("mame"))
                             .textFieldStyle(.roundedBorder)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         Button("Choose…") { pickFile($settings.mameExecutablePath) }
                     }
                 }
@@ -55,6 +59,8 @@ private struct GeneralSettingsTab: View {
                               text: $settings.romDownloadBaseURL,
                               prompt: Text(AppSettingsDefaults.romDownloadBaseURL))
                         .textFieldStyle(.roundedBorder)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             } header: {
                 Text("ROM downloads")
