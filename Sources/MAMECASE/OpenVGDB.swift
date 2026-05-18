@@ -1,11 +1,12 @@
 import Foundation
+import SQLite3
 
 /// Looks up box-art URLs for software-list entries against the OpenVGDB
 /// SQLite database (community-maintained mapping of game metadata).
 ///
 /// The database is downloaded once on first use from the OpenVGDB release
-/// (~6 MB zipped, ~50 MB extracted) into Application Support. Queries are
-/// done by shelling out to `/usr/bin/sqlite3` to avoid a SQLite dependency.
+/// (~6 MB zipped, ~50 MB extracted) into Application Support. Queries go
+/// through the in-process `SQLite3` C API — no process spawn per lookup.
 ///
 /// Coverage caveats: OpenVGDB hasn't seen a new release since 2021 and the
 /// hosted image URLs occasionally 404. Lookups here use the display-name
@@ -19,6 +20,10 @@ actor OpenVGDB {
 
     private var inFlightDownload: Task<Bool, Never>?
     private var downloadFailed: Bool = false
+    /// Memoized title → URL? results so we don't re-query for repeat tiles.
+    private var titleCache: [String: URL?] = [:]
+    /// Opaque sqlite3 handle, lazily opened, kept alive for the process.
+    private var db: OpaquePointer?
 
     private nonisolated var dbURL: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory,
@@ -28,11 +33,12 @@ actor OpenVGDB {
         return dir.appendingPathComponent("openvgdb.sqlite")
     }
 
-    /// True when the database file is on disk and ready to query.
     var isAvailable: Bool { FileManager.default.fileExists(atPath: dbURL.path) }
 
-    /// Make sure the SQLite database exists locally. Downloads + extracts
-    /// on first call. Subsequent calls are cheap.
+    deinit {
+        if let db { sqlite3_close(db) }
+    }
+
     @discardableResult
     func ensureDatabase() async -> Bool {
         if isAvailable { return true }
@@ -52,17 +58,45 @@ actor OpenVGDB {
     /// Look up a cover-art URL by exact case-insensitive title match.
     /// Returns nil if the DB isn't present or no row matches.
     func coverURL(forTitle title: String) async -> URL? {
-        guard await ensureDatabase() else { return nil }
-        let escaped = title.replacingOccurrences(of: "'", with: "''")
+        if let cached = titleCache[title] { return cached }
+        guard await ensureDatabase() else {
+            titleCache[title] = nil
+            return nil
+        }
+        let result = query(title: title)
+        titleCache[title] = result
+        return result
+    }
+
+    // MARK: - SQLite query
+
+    private func query(title: String) -> URL? {
+        if db == nil { openDatabase() }
+        guard let db else { return nil }
         let sql = """
         SELECT releaseCoverFront FROM RELEASES
-        WHERE LOWER(releaseTitleName) = LOWER('\(escaped)')
+        WHERE LOWER(releaseTitleName) = LOWER(?1)
           AND releaseCoverFront IS NOT NULL
-        LIMIT 1;
+        LIMIT 1
         """
-        guard let raw = await runQuery(sql),
-              let url = URL(string: raw) else { return nil }
-        return url
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        let transient = unsafeBitCast(OpaquePointer(bitPattern: -1)!,
+                                      to: sqlite3_destructor_type.self)
+        sqlite3_bind_text(stmt, 1, title, -1, transient)
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+        guard let cstr = sqlite3_column_text(stmt, 0) else { return nil }
+        return URL(string: String(cString: cstr))
+    }
+
+    private func openDatabase() {
+        var handle: OpaquePointer?
+        if sqlite3_open_v2(dbURL.path, &handle, SQLITE_OPEN_READONLY, nil) == SQLITE_OK {
+            db = handle
+        } else {
+            if let handle { sqlite3_close(handle) }
+        }
     }
 
     // MARK: - Download
@@ -99,31 +133,6 @@ actor OpenVGDB {
             return true
         } catch {
             return false
-        }
-    }
-
-    // MARK: - Query
-
-    private func runQuery(_ sql: String) async -> String? {
-        let path = dbURL.path
-        return await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
-            DispatchQueue.global(qos: .utility).async {
-                let p = Process()
-                p.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
-                p.arguments = [path, sql]
-                let outPipe = Pipe()
-                p.standardOutput = outPipe
-                p.standardError = Pipe()
-                do { try p.run() } catch {
-                    continuation.resume(returning: nil)
-                    return
-                }
-                p.waitUntilExit()
-                let data = outPipe.fileHandleForReading.readDataToEndOfFile()
-                let raw = (String(data: data, encoding: .utf8) ?? "")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                continuation.resume(returning: raw.isEmpty ? nil : raw)
-            }
         }
     }
 }
