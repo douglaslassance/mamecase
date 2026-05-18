@@ -133,6 +133,31 @@ struct Playlist: Identifiable, Hashable, Codable {
 /// Region buckets the user can filter the gallery by. `all` shows
 /// everything; the others match the corresponding region tokens in
 /// `DisplayName.format(...).flags`.
+/// How the gallery arranges tiles.
+enum LayoutMode: String, CaseIterable, Identifiable {
+    case grid
+    case verticalMasonry
+    case horizontalMasonry
+
+    var id: String { rawValue }
+
+    var systemImage: String {
+        switch self {
+        case .grid: return "square.grid.2x2"
+        case .verticalMasonry: return "rectangle.split.3x1"
+        case .horizontalMasonry: return "rectangle.split.1x2"
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .grid: return "Grid"
+        case .verticalMasonry: return "Vertical Masonry"
+        case .horizontalMasonry: return "Horizontal Masonry"
+        }
+    }
+}
+
 enum RegionFilter: String, CaseIterable, Identifiable {
     case all
     case usa

@@ -26,6 +26,7 @@ struct ContentView: View {
     @AppStorage("controllerScheme") private var controllerScheme: String = ""
     @AppStorage("shaderScheme") private var shaderScheme: String = ""
     @AppStorage("regionFilter") private var regionFilter: RegionFilter = .all
+    @AppStorage("layoutMode") private var layoutMode: LayoutMode = .grid
     @State private var selection: SystemNode.ID?
     @State private var entrySelection: Set<Entry.ID> = []
     @State private var searchText: String = ""
@@ -143,6 +144,18 @@ struct ContentView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .help("Media displayed in the gallery")
+            }
+            ToolbarItem(id: "layout-mode", placement: .primaryAction) {
+                Picker("Layout", selection: $layoutMode) {
+                    ForEach(LayoutMode.allCases) { mode in
+                        Image(systemName: mode.systemImage)
+                            .help(mode.label)
+                            .tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .help("Gallery layout")
             }
             ToolbarItem(id: "region-filter", placement: .primaryAction) {
                 Picker("Region", selection: $regionFilter) {
@@ -345,6 +358,7 @@ struct ContentView: View {
                         hideMissing: !showMissing,
                         showFavoritesOnly: showFavoritesOnly,
                         regionFilter: regionFilter,
+                        layoutMode: layoutMode,
                         searchText: $searchText,
                         selection: $entrySelection)
                 .id(node.id)

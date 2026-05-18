@@ -7,6 +7,7 @@ struct GalleryView: View {
     let hideMissing: Bool
     let showFavoritesOnly: Bool
     let regionFilter: RegionFilter
+    let layoutMode: LayoutMode
     @Binding var searchText: String
     @Binding var selection: Set<Entry.ID>
 
@@ -58,152 +59,13 @@ struct GalleryView: View {
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 16) {
-                ForEach(entries) { entry in
-                    EntryTile(entry: entry,
-                              status: library.verifications[entry.id],
-                              verifying: library.verifyingIDs.contains(entry.id),
-                              selected: selection.contains(entry.id),
-                              favorite: library.favorites.contains(entry.id),
-                              generation: library.mediaGeneration,
-                              showSystemLabel: system.kind.isCrossSystem)
-                        .background(GeometryReader { geo in
-                            Color.clear.preference(
-                                key: TileFramesKey.self,
-                                value: [entry.id: geo.frame(in: .named("gallery"))]
-                            )
-                        })
-                        .contentShape(Rectangle())
-                        .overlay(
-                            MouseEventView(
-                                onClick: { clickCount, flags in
-                                    if clickCount >= 2 {
-                                        library.launch(entry)
-                                    } else {
-                                        handleClick(entry, flags: flags)
-                                    }
-                                },
-                                onRightClick: {
-                                    // Right-click on an unselected tile makes
-                                    // it the sole selection before SwiftUI's
-                                    // context menu builds its items.
-                                    if !selection.contains(entry.id) {
-                                        selection = [entry.id]
-                                        anchor = entry.id
-                                    }
-                                }
-                            )
-                        )
-                        .contextMenu {
-                            Button("Launch") {
-                                if selection.contains(entry.id), selection.count > 1 {
-                                    library.launch(ids: selection, in: system)
-                                } else {
-                                    library.launch(entry)
-                                }
-                            }
-                            Button(verifyMenuTitle(for: entry)) {
-                                Task {
-                                    if selection.contains(entry.id), selection.count > 1 {
-                                        await library.verify(ids: selection, in: system)
-                                    } else {
-                                        await library.verify(entry)
-                                    }
-                                }
-                            }
-                            .disabled(library.config == nil)
-                            if case .arcade = entry.kind {
-                                Button(downloadMenuTitle(for: entry)) {
-                                    startDownload(triggeredBy: entry)
-                                }
-                                .disabled(library.config == nil)
-                            }
-                            Button(favoriteMenuTitle(for: entry)) {
-                                toggleFavorite(triggeredBy: entry)
-                            }
-                            Menu("Add to Playlist") {
-                                ForEach(library.playlists) { p in
-                                    Button(p.name) {
-                                        library.addToPlaylist(p.id, entryIDs: batchIDs(triggeredBy: entry))
-                                    }
-                                }
-                                if !library.playlists.isEmpty { Divider() }
-                                Button("New Playlist…") {
-                                    let p = library.createPlaylist(named: "New Playlist")
-                                    library.addToPlaylist(p.id, entryIDs: batchIDs(triggeredBy: entry))
-                                }
-                            }
-                            if case .cross(let scope) = system.kind,
-                               case .playlist(let pid) = scope {
-                                Button("Remove from Playlist") {
-                                    library.removeFromPlaylist(pid, entryIDs: batchIDs(triggeredBy: entry))
-                                }
-                            }
-                            Button(downloadMediaMenuTitle(for: entry)) {
-                                Task {
-                                    let ids = batchIDs(triggeredBy: entry)
-                                    await library.downloadMedia(ids: ids, in: system)
-                                }
-                            }
-                            .disabled(library.config == nil)
-                            Button(regenerateMenuTitle(for: entry)) {
-                                Task {
-                                    if selection.contains(entry.id), selection.count > 1 {
-                                        await library.regenerateMedia(ids: selection, in: system)
-                                    } else {
-                                        await library.regenerateMedia(ids: [entry.id], in: system)
-                                    }
-                                }
-                            }
-                            .disabled(library.config == nil)
-                            if !isMultiSelected(entry) {
-                                Divider()
-                                if let snap = library.mediaURL(for: entry, kind: .snap) {
-                                    Button("Reveal Snapshot in Finder") {
-                                        NSWorkspace.shared.activateFileViewerSelecting([snap])
-                                    }
-                                }
-                                Button("Copy ROM Name") {
-                                    copyToPasteboard(entry.shortName)
-                                }
-                                Button("Copy Launch Command") {
-                                    copyToPasteboard(launchCommand(for: entry))
-                                }
-                                .disabled(library.config == nil)
-                                Divider()
-                                if case .arcade = entry.kind {
-                                    Button("Open in Arcade Database") {
-                                        openSearch(for: entry, on: .arcadeDatabase)
-                                    }
-                                }
-                                Button("Search on eBay") {
-                                    openSearch(for: entry, on: .eBay)
-                                }
-                            }
-                        }
-                }
+            GeometryReader { outer in
+                galleryContent(containerWidth: outer.size.width)
             }
-            .padding(16)
-            .background(
-                GalleryBackgroundView(
-                    onClick: { selection.removeAll() },
-                    onDragChanged: { start, current, flags in
-                        if marqueeStart == nil {
-                            marqueeStart = start
-                            marqueeAdditive = flags.contains(.command)
-                            marqueeBase = marqueeAdditive ? selection : []
-                        }
-                        marqueeCurrent = current
-                        updateMarqueeSelection()
-                    },
-                    onDragEnded: {
-                        marqueeStart = nil
-                        marqueeCurrent = nil
-                        marqueeBase = []
-                        marqueeAdditive = false
-                    }
-                )
-            )
+            .frame(minHeight: 0)
+            // Let SwiftUI grow the ScrollView's content vertically as the
+            // masonry/grid sets its own intrinsic height.
+            .fixedSize(horizontal: false, vertical: true)
         }
         .coordinateSpace(name: "gallery")
         .onPreferenceChange(TileFramesKey.self) { tileFrames = $0 }
@@ -262,6 +124,205 @@ struct GalleryView: View {
         } message: {
             if let p = pendingDownload {
                 Text(overwriteMessage(for: p))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func galleryContent(containerWidth: CGFloat) -> some View {
+        let inner = max(0, containerWidth - 32)
+        VStack(alignment: .leading, spacing: 0) {
+            switch layoutMode {
+            case .grid:
+                LazyVGrid(columns: columns, spacing: 16) {
+                    ForEach(entries) { entry in tileView(for: entry, fixedSize: nil) }
+                }
+            case .verticalMasonry:
+                VerticalMasonryView(
+                    entries: entries,
+                    containerWidth: inner,
+                    targetColumnWidth: gridItemSize,
+                    spacing: 16,
+                    aspectRatio: { artworkAspect(for: $0) }
+                ) { entry, size in
+                    tileView(for: entry,
+                             fixedSize: CGSize(width: size.width,
+                                               height: size.height - 38))
+                }
+            case .horizontalMasonry:
+                HorizontalMasonryView(
+                    entries: entries,
+                    containerWidth: inner,
+                    targetRowHeight: gridItemSize,
+                    spacing: 16,
+                    aspectRatio: { artworkAspect(for: $0) }
+                ) { entry, size in
+                    tileView(for: entry,
+                             fixedSize: CGSize(width: size.width,
+                                               height: size.height - 38))
+                }
+            }
+        }
+        .padding(16)
+        .background(
+            GalleryBackgroundView(
+                onClick: { selection.removeAll() },
+                onDragChanged: { start, current, flags in
+                    if marqueeStart == nil {
+                        marqueeStart = start
+                        marqueeAdditive = flags.contains(.command)
+                        marqueeBase = marqueeAdditive ? selection : []
+                    }
+                    marqueeCurrent = current
+                    updateMarqueeSelection()
+                },
+                onDragEnded: {
+                    marqueeStart = nil
+                    marqueeCurrent = nil
+                    marqueeBase = []
+                    marqueeAdditive = false
+                }
+            )
+        )
+    }
+
+    /// Per-entry aspect ratio used by masonry layouts. Falls back to the
+    /// per-system default until image-size discovery lands.
+    private func artworkAspect(for entry: Entry) -> CGFloat {
+        switch entry.kind {
+        case .arcade: return SnapAspectRatio.ratio(for: entry)
+        case .software:
+            switch entryMediaPreference {
+            case .coverArt: return CoverArtAspectRatio.ratio(for: entry)
+            case .snap: return SnapAspectRatio.ratio(for: entry)
+            }
+        }
+    }
+
+    @AppStorage("mediaKind") private var entryMediaPreference: MediaKind = .coverArt
+
+    @ViewBuilder
+    private func tileView(for entry: Entry, fixedSize: CGSize?) -> some View {
+        EntryTile(entry: entry,
+                  status: library.verifications[entry.id],
+                  verifying: library.verifyingIDs.contains(entry.id),
+                  selected: selection.contains(entry.id),
+                  favorite: library.favorites.contains(entry.id),
+                  generation: library.mediaGeneration,
+                  showSystemLabel: system.kind.isCrossSystem,
+                  fixedArtworkSize: fixedSize)
+            .background(GeometryReader { geo in
+                Color.clear.preference(
+                    key: TileFramesKey.self,
+                    value: [entry.id: geo.frame(in: .named("gallery"))]
+                )
+            })
+            .contentShape(Rectangle())
+            .overlay(
+                MouseEventView(
+                    onClick: { clickCount, flags in
+                        if clickCount >= 2 {
+                            library.launch(entry)
+                        } else {
+                            handleClick(entry, flags: flags)
+                        }
+                    },
+                    onRightClick: {
+                        if !selection.contains(entry.id) {
+                            selection = [entry.id]
+                            anchor = entry.id
+                        }
+                    }
+                )
+            )
+            .contextMenu { tileContextMenu(for: entry) }
+    }
+
+    @ViewBuilder
+    private func tileContextMenu(for entry: Entry) -> some View {
+        Button("Launch") {
+            if selection.contains(entry.id), selection.count > 1 {
+                library.launch(ids: selection, in: system)
+            } else {
+                library.launch(entry)
+            }
+        }
+        Button(verifyMenuTitle(for: entry)) {
+            Task {
+                if selection.contains(entry.id), selection.count > 1 {
+                    await library.verify(ids: selection, in: system)
+                } else {
+                    await library.verify(entry)
+                }
+            }
+        }
+        .disabled(library.config == nil)
+        if case .arcade = entry.kind {
+            Button(downloadMenuTitle(for: entry)) {
+                startDownload(triggeredBy: entry)
+            }
+            .disabled(library.config == nil)
+        }
+        Button(favoriteMenuTitle(for: entry)) {
+            toggleFavorite(triggeredBy: entry)
+        }
+        Menu("Add to Playlist") {
+            ForEach(library.playlists) { p in
+                Button(p.name) {
+                    library.addToPlaylist(p.id, entryIDs: batchIDs(triggeredBy: entry))
+                }
+            }
+            if !library.playlists.isEmpty { Divider() }
+            Button("New Playlist…") {
+                let p = library.createPlaylist(named: "New Playlist")
+                library.addToPlaylist(p.id, entryIDs: batchIDs(triggeredBy: entry))
+            }
+        }
+        if case .cross(let scope) = system.kind,
+           case .playlist(let pid) = scope {
+            Button("Remove from Playlist") {
+                library.removeFromPlaylist(pid, entryIDs: batchIDs(triggeredBy: entry))
+            }
+        }
+        Button(downloadMediaMenuTitle(for: entry)) {
+            Task {
+                let ids = batchIDs(triggeredBy: entry)
+                await library.downloadMedia(ids: ids, in: system)
+            }
+        }
+        .disabled(library.config == nil)
+        Button(regenerateMenuTitle(for: entry)) {
+            Task {
+                if selection.contains(entry.id), selection.count > 1 {
+                    await library.regenerateMedia(ids: selection, in: system)
+                } else {
+                    await library.regenerateMedia(ids: [entry.id], in: system)
+                }
+            }
+        }
+        .disabled(library.config == nil)
+        if !isMultiSelected(entry) {
+            Divider()
+            if let snap = library.mediaURL(for: entry, kind: .snap) {
+                Button("Reveal Snapshot in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([snap])
+                }
+            }
+            Button("Copy ROM Name") {
+                copyToPasteboard(entry.shortName)
+            }
+            Button("Copy Launch Command") {
+                copyToPasteboard(launchCommand(for: entry))
+            }
+            .disabled(library.config == nil)
+            Divider()
+            if case .arcade = entry.kind {
+                Button("Open in Arcade Database") {
+                    openSearch(for: entry, on: .arcadeDatabase)
+                }
+            }
+            Button("Search on eBay") {
+                openSearch(for: entry, on: .eBay)
             }
         }
     }
@@ -476,6 +537,21 @@ struct GalleryView: View {
     }
 }
 
+/// Picks between aspect-ratio sizing (grid) and explicit-size sizing
+/// (masonry). Used by `EntryTile`'s artwork block.
+private struct ArtworkSizing: ViewModifier {
+    let aspect: CGFloat
+    let fixedSize: CGSize?
+
+    func body(content: Content) -> some View {
+        if let s = fixedSize {
+            content.frame(width: s.width, height: s.height)
+        } else {
+            content.aspectRatio(aspect, contentMode: .fit)
+        }
+    }
+}
+
 /// Tracks a pending download awaiting overwrite confirmation.
 struct PendingDownload {
     let targets: [Entry]
@@ -504,6 +580,10 @@ private struct EntryTile: View {
     /// useful in cross-system views (All / Recent / Playlists) where the
     /// gallery contains entries from multiple systems.
     let showSystemLabel: Bool
+    /// When set, the artwork frame is pinned to this size rather than
+    /// derived from `tileAspectRatio` — used by the masonry layouts that
+    /// pre-compute each tile's frame.
+    var fixedArtworkSize: CGSize? = nil
 
     @AppStorage("mediaKind") private var mediaKind: MediaKind = .coverArt
     @State private var snapURL: URL?
@@ -559,7 +639,7 @@ private struct EntryTile: View {
                 }
                 .frame(width: geo.size.width, height: geo.size.height)
             }
-            .aspectRatio(tileAspectRatio, contentMode: .fit)
+            .modifier(ArtworkSizing(aspect: tileAspectRatio, fixedSize: fixedArtworkSize))
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
             // Line 1: just the cleaned title.
