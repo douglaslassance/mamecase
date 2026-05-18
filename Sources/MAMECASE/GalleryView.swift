@@ -413,7 +413,6 @@ private struct EntryTile: View {
                     Image(nsImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
                 } else {
                     Image(systemName: "gamecontroller.fill")
                         .font(.largeTitle)
@@ -438,6 +437,10 @@ private struct EntryTile: View {
                 }
             }
             .aspectRatio(tileAspectRatio, contentMode: .fit)
+            // Clip overflow from images whose natural aspect doesn't match
+            // `tileAspectRatio` so every tile in a system renders at the
+            // same size.
+            .clipShape(RoundedRectangle(cornerRadius: 8))
 
             HStack(spacing: 4) {
                 let formatted = DisplayName.format(entry.displayName)
