@@ -31,6 +31,11 @@ final class Library: ObservableObject {
     @Published var verifications: [Entry.ID: RomStatus] = [:]
     @Published var verifyingIDs: Set<Entry.ID> = []
     @Published var favorites: Set<Entry.ID> = FavoritesStore.load()
+    /// Entry IDs in launch order, most recent first. Populated by
+    /// `launch(_:)`; persisted in Phase 4.
+    @Published var recentlyLaunched: [Entry.ID] = []
+    /// User-curated lists of entries. Populated/persisted in Phase 5.
+    @Published var playlists: [Playlist] = []
     @Published var isVerifyingAll: Bool = false
     /// In-memory mirror of `verifications.json` so we can decide cache hits
     /// without touching disk on every entry.
@@ -80,6 +85,12 @@ final class Library: ObservableObject {
         return nodes
     }
 
+    /// Human-readable label for a software-list short name, e.g.
+    /// `"nes"` → `"Nintendo Entertainment System Cartridges"`.
+    func softwareListDisplayName(for shortName: String) -> String? {
+        softwareLists.first { $0.name == shortName }?.description
+    }
+
     func entries(for system: SystemNode, hideMissing: Bool) -> [Entry] {
         let all: [Entry]
         switch system.kind {
@@ -87,6 +98,25 @@ final class Library: ObservableObject {
             all = arcadeEntries
         case .software(let name):
             all = softwareLists.first(where: { $0.name == name })?.entries ?? []
+        case .cross(let scope):
+            switch scope {
+            case .all:
+                var merged: [Entry] = arcadeEntries
+                for list in softwareLists { merged.append(contentsOf: list.entries) }
+                all = merged
+            case .recent:
+                let order = recentlyLaunched
+                let lookup = Dictionary(uniqueKeysWithValues:
+                    (arcadeEntries.map { ($0.id, $0) }
+                     + softwareLists.flatMap { $0.entries }.map { ($0.id, $0) }))
+                all = order.compactMap { lookup[$0] }
+            case .playlist(let id):
+                let ids = playlists.first(where: { $0.id == id })?.entryIDs ?? []
+                let lookup = Dictionary(uniqueKeysWithValues:
+                    (arcadeEntries.map { ($0.id, $0) }
+                     + softwareLists.flatMap { $0.entries }.map { ($0.id, $0) }))
+                all = ids.compactMap { lookup[$0] }
+            }
         }
         return hideMissing ? all.filter(\.owned) : all
     }

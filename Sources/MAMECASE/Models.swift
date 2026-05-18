@@ -105,7 +105,29 @@ struct SystemNode: Identifiable, Hashable {
     enum Kind: Hashable {
         case arcade
         case software(listName: String)
+        /// Pseudo-system that pools entries from every real system —
+        /// used by the Library sidebar ("All", "Recent") and playlists.
+        case cross(scope: CrossScope)
+
+        var isCrossSystem: Bool {
+            if case .cross = self { return true }
+            return false
+        }
     }
+
+    enum CrossScope: Hashable {
+        case all
+        case recent
+        case playlist(id: String)
+    }
+}
+
+/// User-curated playlist of game entries. Persisted as JSON; populated
+/// in Phase 5.
+struct Playlist: Identifiable, Hashable, Codable {
+    var id: String
+    var name: String
+    var entryIDs: [String]
 }
 
 /// A kind of media we display in the gallery for an entry.

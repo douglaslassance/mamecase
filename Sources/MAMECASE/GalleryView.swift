@@ -61,7 +61,8 @@ struct GalleryView: View {
                               verifying: library.verifyingIDs.contains(entry.id),
                               selected: selection.contains(entry.id),
                               favorite: library.favorites.contains(entry.id),
-                              generation: library.mediaGeneration)
+                              generation: library.mediaGeneration,
+                              showSystemLabel: system.kind.isCrossSystem)
                         .background(GeometryReader { geo in
                             Color.clear.preference(
                                 key: TileFramesKey.self,
@@ -407,6 +408,12 @@ struct GalleryView: View {
         case .software:
             return hideMissing ? "No ROMs for this system in your rompath. Turn off ‘Hide missing’ to browse all."
                                : "Nothing matched your search."
+        case .cross(let scope):
+            switch scope {
+            case .all: return "No entries found."
+            case .recent: return "No recently launched games yet."
+            case .playlist: return "Add games to this playlist from the gallery."
+            }
         }
     }
 
@@ -471,13 +478,17 @@ private struct EntryTile: View {
     let selected: Bool
     let favorite: Bool
     let generation: Int
+    /// Whether to display the originating system on the meta row. Only
+    /// useful in cross-system views (All / Recent / Playlists) where the
+    /// gallery contains entries from multiple systems.
+    let showSystemLabel: Bool
 
     @AppStorage("mediaKind") private var mediaKind: MediaKind = .coverArt
     @State private var snapURL: URL?
     @State private var coverURL: URL?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 2) {
             GeometryReader { geo in
                 ZStack {
                     RoundedRectangle(cornerRadius: 8)
@@ -529,27 +540,29 @@ private struct EntryTile: View {
             .aspectRatio(tileAspectRatio, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            HStack(spacing: 4) {
-                let formatted = DisplayName.format(entry.displayName)
-                Text(formatted.name)
-                    .font(.subheadline.weight(.medium))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+            // Line 1: just the cleaned title.
+            let formatted = DisplayName.format(entry.displayName)
+            Text(formatted.name)
+                .font(.subheadline.weight(.medium))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 4)
+
+            // Line 2: region flag, year, publisher (space-separated, no
+            // dot separators). Always reserve the row so cards line up.
+            HStack(spacing: 6) {
                 if !formatted.flags.isEmpty {
                     Text(formatted.flags)
-                        .font(.subheadline)
                 }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            // Keep this row a fixed height so cards line up even when an
-            // entry has no year/publisher (e.g. arcade).
-            HStack(spacing: 6) {
                 if let year = entry.year, !year.isEmpty {
                     Text(year)
                 }
                 if let pub = entry.publisher, !pub.isEmpty {
-                    Text("· \(pub)").lineLimit(1)
+                    Text(pub).lineLimit(1).truncationMode(.tail)
+                }
+                if showSystemLabel, let sys = systemLabel {
+                    Text(sys).lineLimit(1).truncationMode(.tail)
                 }
                 Spacer(minLength: 0)
             }
@@ -602,6 +615,16 @@ private struct EntryTile: View {
         let url: URL? = (mediaKind == .coverArt) ? coverURL : snapURL
         guard let url else { return nil }
         return NSImage(contentsOf: url)
+    }
+
+    /// Short human label of the system this entry belongs to, for the
+    /// cross-system views (All/Recent/Playlist). Returns nil when the
+    /// caller said not to show one.
+    private var systemLabel: String? {
+        switch entry.kind {
+        case .arcade: return "Arcade"
+        case .software(let sys): return library.softwareListDisplayName(for: sys) ?? sys
+        }
     }
 
     /// Aspect ratio for the artwork tile, picked per-kind and per-system
