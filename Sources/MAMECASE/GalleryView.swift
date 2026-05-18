@@ -116,6 +116,13 @@ struct GalleryView: View {
                             Button(favoriteMenuTitle(for: entry)) {
                                 toggleFavorite(triggeredBy: entry)
                             }
+                            Button(downloadMediaMenuTitle(for: entry)) {
+                                Task {
+                                    let ids = batchIDs(triggeredBy: entry)
+                                    await library.downloadMedia(ids: ids, in: system)
+                                }
+                            }
+                            .disabled(library.config == nil)
                             Button(regenerateMenuTitle(for: entry)) {
                                 Task {
                                     if selection.contains(entry.id), selection.count > 1 {
@@ -249,6 +256,19 @@ struct GalleryView: View {
     private func regenerateMenuTitle(for entry: Entry) -> String {
         let count = (selection.contains(entry.id) && selection.count > 1) ? selection.count : 1
         return count > 1 ? "Regenerate Media for \(count) Entries" : "Regenerate Media"
+    }
+
+    private func downloadMediaMenuTitle(for entry: Entry) -> String {
+        let count = (selection.contains(entry.id) && selection.count > 1) ? selection.count : 1
+        return count > 1 ? "Download Media for \(count) Entries" : "Download Media"
+    }
+
+    /// IDs the context-menu batch action should target: the multi-selection
+    /// if the right-clicked entry is part of it, otherwise just the entry
+    /// itself.
+    private func batchIDs(triggeredBy entry: Entry) -> Set<Entry.ID> {
+        if selection.contains(entry.id), selection.count > 1 { return selection }
+        return [entry.id]
     }
 
     /// "Add to Favorites" / "Remove from Favorites", swapping based on
@@ -564,6 +584,10 @@ private struct EntryTile: View {
         snapURL = library.mediaURL(for: entry, kind: .snap)
         coverURL = library.mediaURL(for: entry, kind: .coverArt)
         guard snapURL == nil && coverURL == nil else { return }
+        // Only auto-fetch online media for ROMs the user actually owns.
+        // For unowned entries the menu's "Download Media" action is the
+        // explicit, user-driven way to populate art.
+        guard entry.owned else { return }
 
         // Prefer the kind the user is viewing; fall back to the other one
         // so cross-fallback still works.

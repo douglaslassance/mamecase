@@ -332,9 +332,31 @@ final class Library: ObservableObject {
     /// the user has disabled online fetching (Settings → Media → Sources).
     @discardableResult
     func fetchOnlineMedia(for entry: Entry, kind: MediaKind) async -> URL? {
-        let enabled = UserDefaults.standard.object(forKey: "onlineMediaFetchEnabled") as? Bool ?? false
-        guard enabled else { return nil }
-        return await MediaProvider.shared.fetchOnline(for: entry, kind: kind)
+        await MediaProvider.shared.fetchOnline(for: entry, kind: kind)
+    }
+
+    /// Explicit user-driven online fetch for a batch of entries — used by
+    /// the "Download Media" context-menu action, which is the only way to
+    /// populate art for ROMs the user doesn't own. Ignores any auto-fetch
+    /// gates; the concurrency cap in `MediaProvider` keeps it polite.
+    func downloadMedia(ids: Set<Entry.ID>, in system: SystemNode) async {
+        let targets = entries(for: system, hideMissing: false).filter { ids.contains($0.id) }
+        guard !targets.isEmpty else { return }
+        arcadeStatus = "Downloading media…"
+        defer {
+            arcadeStatus = nil
+            mediaGeneration &+= 1
+        }
+        var done = 0
+        for entry in targets {
+            for kind in MediaKind.allCases {
+                _ = await MediaProvider.shared.fetchOnline(for: entry, kind: kind)
+            }
+            done += 1
+            if done % 5 == 0 || done == targets.count {
+                arcadeStatus = "Downloading media… \(done)/\(targets.count)"
+            }
+        }
     }
 
     // MARK: - Favorites

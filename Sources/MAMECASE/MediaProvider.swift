@@ -20,6 +20,12 @@ actor MediaProvider {
     private var inFlight: [URL: Task<Bool, Never>] = [:]
     private var onlineInFlight: [String: Task<URL?, Never>] = [:]
     private var onlineMisses: Set<String> = []
+    /// At most this many `fetchOnline` network calls run concurrently.
+    /// Keeps Mamecase polite to libretro-thumbnails / GitHub raw when a
+    /// big system view fires hundreds of tile-driven fetches at once.
+    private let maxConcurrentFetches = 4
+    private var activeFetches = 0
+    private var fetchWaiters: [CheckedContinuation<Void, Never>] = []
     private let session: URLSession = {
         let cfg = URLSessionConfiguration.default
         cfg.timeoutIntervalForRequest = 20
@@ -31,6 +37,7 @@ actor MediaProvider {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
         self.cacheRoot = caches.appendingPathComponent("Mamecase/media", isDirectory: true)
         try? FileManager.default.createDirectory(at: cacheRoot, withIntermediateDirectories: true)
+        self.onlineMisses = MediaProvider.loadMisses(root: cacheRoot)
     }
 
     nonisolated func cacheDir(for kind: MediaKind) -> URL {
@@ -75,11 +82,13 @@ actor MediaProvider {
                   let url = await LibretroThumbnails.shared.coverURL(for: entry)
             else {
                 onlineMisses.insert(key)
+                saveMisses()
                 return nil
             }
             candidates = [url]
         }
 
+        await acquireFetchSlot()
         let session = self.session
         let task = Task.detached(priority: .utility) { () -> URL? in
             for url in candidates {
@@ -98,7 +107,11 @@ actor MediaProvider {
         onlineInFlight[key] = task
         let result = await task.value
         onlineInFlight.removeValue(forKey: key)
-        if result == nil { onlineMisses.insert(key) }
+        releaseFetchSlot()
+        if result == nil {
+            onlineMisses.insert(key)
+            saveMisses()
+        }
         return result
     }
 
@@ -107,13 +120,15 @@ actor MediaProvider {
     func invalidate(entry: Entry) {
         let exts = ["png", "jpg", "jpeg"]
         let base = MediaProvider.basename(for: entry)
+        var changed = false
         for kind in MediaKind.allCases {
             for ext in exts {
                 let url = cacheDir(for: kind).appendingPathComponent("\(base).\(ext)")
                 try? FileManager.default.removeItem(at: url)
             }
-            onlineMisses.remove("\(kind.rawValue)/\(base)")
+            if onlineMisses.remove("\(kind.rawValue)/\(base)") != nil { changed = true }
         }
+        if changed { saveMisses() }
     }
 
     private nonisolated func libretroCandidates(for entry: Entry, kind: MediaKind) -> [URL] {
@@ -148,6 +163,54 @@ actor MediaProvider {
         try? FileManager.default.createDirectory(at: cacheRoot, withIntermediateDirectories: true)
         extracted.removeAll()
         inFlight.removeAll()
+        onlineMisses.removeAll()
+        try? FileManager.default.removeItem(at: MediaProvider.missesFile(root: cacheRoot))
+    }
+
+    // MARK: - Concurrency cap
+
+    /// Reserve one of `maxConcurrentFetches` outstanding network slots.
+    /// Suspends until a slot becomes available; releasers hand the slot
+    /// directly to the first waiter so the in-flight count never exceeds
+    /// the cap even under contention.
+    private func acquireFetchSlot() async {
+        if activeFetches < maxConcurrentFetches {
+            activeFetches += 1
+            return
+        }
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+            fetchWaiters.append(c)
+        }
+    }
+
+    private func releaseFetchSlot() {
+        if !fetchWaiters.isEmpty {
+            let next = fetchWaiters.removeFirst()
+            next.resume()
+        } else {
+            activeFetches -= 1
+        }
+    }
+
+    // MARK: - Persistent miss cache
+
+    private static let missesFileName = "misses.json"
+
+    private static func missesFile(root: URL) -> URL {
+        root.appendingPathComponent(missesFileName)
+    }
+
+    private static func loadMisses(root: URL) -> Set<String> {
+        guard let data = try? Data(contentsOf: missesFile(root: root)),
+              let arr = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return Set(arr)
+    }
+
+    private func saveMisses() {
+        let url = MediaProvider.missesFile(root: cacheRoot)
+        if let data = try? JSONEncoder().encode(Array(onlineMisses).sorted()) {
+            try? data.write(to: url, options: .atomic)
+        }
     }
 
     /// Recursively sum the size of every file under the media cache.
