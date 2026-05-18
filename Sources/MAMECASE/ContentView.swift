@@ -17,6 +17,7 @@ struct ContentView: View {
     @EnvironmentObject var library: Library
     @EnvironmentObject var settings: AppSettings
     @AppStorage("showMissingFiles") private var showMissing: Bool = false
+    @AppStorage("showFavoritesOnly") private var showFavoritesOnly: Bool = false
     @AppStorage("mediaKind") private var mediaKind: MediaKind = .coverArt
     @AppStorage("gridItemSize") private var gridItemSize: Double = 180
     @AppStorage("showStatusBar") private var showStatusBar: Bool = true
@@ -121,6 +122,7 @@ struct ContentView: View {
                                       totalCount: currentNode?.count ?? 0,
                                       systemName: currentNode?.displayName,
                                       verifications: library.verifications,
+                                      busyStatus: library.arcadeStatus,
                                       gridItemSize: $gridItemSize)
                         }
                     }
@@ -133,6 +135,13 @@ struct ContentView: View {
             }
         }
         .toolbar {
+            ToolbarItem(id: "show-favorites", placement: .primaryAction) {
+                Toggle(isOn: $showFavoritesOnly) {
+                    Label("Favorites Only", systemImage: "star.fill")
+                }
+                .toggleStyle(.button)
+                .help("Only show favorited entries")
+            }
             ToolbarItem(id: "show-missing", placement: .primaryAction) {
                 Toggle(isOn: $showMissing) {
                     Label("Show Missing Files", systemImage: "receipt")
@@ -290,6 +299,7 @@ struct ContentView: View {
         } else if let node = currentNode {
             GalleryView(system: node,
                         hideMissing: !showMissing,
+                        showFavoritesOnly: showFavoritesOnly,
                         searchText: $searchText,
                         selection: $entrySelection)
                 .id(node.id)

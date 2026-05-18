@@ -7,6 +7,9 @@ struct StatusBar: View {
     let totalCount: Int
     let systemName: String?
     let verifications: [Entry.ID: RomStatus]
+    /// Override line shown in place of the selection summary. Used for
+    /// progress text from long-running tasks (Verify All, archive extract).
+    let busyStatus: String?
     @Binding var gridItemSize: Double
 
     private static let sliderWidth: CGFloat = 160
@@ -20,16 +23,25 @@ struct StatusBar: View {
 
             Spacer(minLength: 0)
             HStack(spacing: 6) {
-                if let status = selectedStatus {
-                    Image(systemName: status.systemImage)
-                        .foregroundStyle(status.tint)
-                        .help("ROM status: \(status.label)")
+                if let busyStatus {
+                    ProgressView().controlSize(.small)
+                    Text(busyStatus)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                } else {
+                    if let status = selectedStatus {
+                        Image(systemName: status.systemImage)
+                            .foregroundStyle(status.tint)
+                            .help("ROM status: \(status.label)")
+                    }
+                    Text(leadingText)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                 }
-                Text(leadingText)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
             }
             Spacer(minLength: 0)
 

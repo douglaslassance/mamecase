@@ -5,6 +5,7 @@ struct GalleryView: View {
     @EnvironmentObject var library: Library
     let system: SystemNode
     let hideMissing: Bool
+    let showFavoritesOnly: Bool
     @Binding var searchText: String
     @Binding var selection: Set<Entry.ID>
 
@@ -29,7 +30,11 @@ struct GalleryView: View {
     }
 
     private var entries: [Entry] {
-        let all = library.entries(for: system, hideMissing: hideMissing)
+        var all = library.entries(for: system, hideMissing: hideMissing)
+        if showFavoritesOnly {
+            let favs = library.favorites
+            all = all.filter { favs.contains($0.id) }
+        }
         let trimmed = searchText.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return all }
         // Lazy/fuzzy match: every whitespace-separated token in the query
@@ -55,6 +60,7 @@ struct GalleryView: View {
                               status: library.verifications[entry.id],
                               verifying: library.verifyingIDs.contains(entry.id),
                               selected: selection.contains(entry.id),
+                              favorite: library.favorites.contains(entry.id),
                               generation: library.mediaGeneration)
                         .background(GeometryReader { geo in
                             Color.clear.preference(
@@ -107,6 +113,9 @@ struct GalleryView: View {
                                 }
                                 .disabled(library.config == nil)
                             }
+                            Button(favoriteMenuTitle(for: entry)) {
+                                toggleFavorite(triggeredBy: entry)
+                            }
                             Button(regenerateMenuTitle(for: entry)) {
                                 Task {
                                     if selection.contains(entry.id), selection.count > 1 {
@@ -132,8 +141,28 @@ struct GalleryView: View {
                                 }
                                 .disabled(library.config == nil)
                                 Divider()
-                                Button("Search on eBay") {
-                                    openSearch(for: entry, on: .eBay)
+                                Menu("Search Online") {
+                                    Button("Internet Archive") {
+                                        openSearch(for: entry, on: .internetArchive)
+                                    }
+                                    if case .arcade = entry.kind {
+                                        Button("arcade-history.com") {
+                                            openSearch(for: entry, on: .arcadeHistory)
+                                        }
+                                    }
+                                    Button("MobyGames") {
+                                        openSearch(for: entry, on: .mobyGames)
+                                    }
+                                    Button("TheGamesDB") {
+                                        openSearch(for: entry, on: .gamesDB)
+                                    }
+                                    Button("YouTube") {
+                                        openSearch(for: entry, on: .youTube)
+                                    }
+                                    Divider()
+                                    Button("eBay") {
+                                        openSearch(for: entry, on: .eBay)
+                                    }
                                 }
                             }
                         }
@@ -237,6 +266,36 @@ struct GalleryView: View {
         return count > 1 ? "Regenerate Media for \(count) Entries" : "Regenerate Media"
     }
 
+    /// "Add to Favorites" / "Remove from Favorites", swapping based on
+    /// whether the right-clicked entry (or all selected) are favourite.
+    private func favoriteMenuTitle(for entry: Entry) -> String {
+        let targets = batchTargets(triggeredBy: entry)
+        let allFavorited = targets.allSatisfy { library.favorites.contains($0.id) }
+        let n = targets.count
+        if n > 1 {
+            return allFavorited ? "Remove \(n) from Favorites" : "Add \(n) to Favorites"
+        }
+        return library.favorites.contains(entry.id) ? "Remove from Favorites" : "Add to Favorites"
+    }
+
+    private func toggleFavorite(triggeredBy entry: Entry) {
+        let targets = batchTargets(triggeredBy: entry)
+        let ids = Set(targets.map(\.id))
+        let allFavorited = targets.allSatisfy { library.favorites.contains($0.id) }
+        library.setFavorite(!allFavorited, ids: ids)
+    }
+
+    /// Returns the entries a context-menu action should act on: the
+    /// right-clicked entry alone, or all selected entries when the
+    /// right-clicked one is part of a multi-selection.
+    private func batchTargets(triggeredBy entry: Entry) -> [Entry] {
+        if selection.contains(entry.id), selection.count > 1 {
+            return library.entries(for: system, hideMissing: false)
+                .filter { selection.contains($0.id) }
+        }
+        return [entry]
+    }
+
     /// Compute the entries that a context-menu action should act on:
     /// the right-clicked entry, or every selected entry if it's part of
     /// a multi-selection.
@@ -297,13 +356,29 @@ struct GalleryView: View {
 
     private enum SearchTarget {
         case eBay
+        case internetArchive
+        case arcadeHistory
+        case mobyGames
+        case gamesDB
+        case youTube
 
         func url(for query: String) -> URL? {
             guard let q = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
                 return nil
             }
             switch self {
-            case .eBay: return URL(string: "https://www.ebay.com/sch/i.html?_nkw=\(q)")
+            case .eBay:
+                return URL(string: "https://www.ebay.com/sch/i.html?_nkw=\(q)")
+            case .internetArchive:
+                return URL(string: "https://archive.org/search?query=\(q)")
+            case .arcadeHistory:
+                return URL(string: "https://www.arcade-history.com/index.php?page=search&keyword=\(q)")
+            case .mobyGames:
+                return URL(string: "https://www.mobygames.com/search/?q=\(q)")
+            case .gamesDB:
+                return URL(string: "https://thegamesdb.net/search.php?name=\(q)")
+            case .youTube:
+                return URL(string: "https://www.youtube.com/results?search_query=\(q)+gameplay")
             }
         }
     }
@@ -398,6 +473,7 @@ private struct EntryTile: View {
     let status: RomStatus?
     let verifying: Bool
     let selected: Bool
+    let favorite: Bool
     let generation: Int
 
     @AppStorage("mediaKind") private var mediaKind: MediaKind = .coverArt
@@ -424,6 +500,15 @@ private struct EntryTile: View {
                         Image(systemName: "gamecontroller.fill")
                             .font(.largeTitle)
                             .foregroundStyle(.tertiary)
+                    }
+                    if favorite {
+                        Image(systemName: "star.fill")
+                            .font(.callout)
+                            .foregroundStyle(.yellow)
+                            .padding(4)
+                            .background(.thinMaterial, in: Circle())
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                            .padding(6)
                     }
                     if verifying {
                         ProgressView()

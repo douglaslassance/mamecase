@@ -49,6 +49,7 @@ struct MAMECASEApp: App {
                 } label: {
                     Text(library.isVerifyingAll ? "Verifying…" : "Verify All ROMs")
                 }
+                .keyboardShortcut("y", modifiers: [.command])
                 .disabled(library.isVerifyingAll || library.config == nil)
             }
         }

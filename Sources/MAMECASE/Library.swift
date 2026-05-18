@@ -30,6 +30,7 @@ final class Library: ObservableObject {
     @Published var shaderSchemes: [String] = []
     @Published var verifications: [Entry.ID: RomStatus] = [:]
     @Published var verifyingIDs: Set<Entry.ID> = []
+    @Published var favorites: Set<Entry.ID> = FavoritesStore.load()
     @Published var isVerifyingAll: Bool = false
     /// In-memory mirror of `verifications.json` so we can decide cache hits
     /// without touching disk on every entry.
@@ -334,6 +335,28 @@ final class Library: ObservableObject {
         let enabled = UserDefaults.standard.object(forKey: "onlineMediaFetchEnabled") as? Bool ?? false
         guard enabled else { return nil }
         return await MediaProvider.shared.fetchOnline(for: entry, kind: kind)
+    }
+
+    // MARK: - Favorites
+
+    func toggleFavorite(_ entry: Entry) {
+        if favorites.contains(entry.id) {
+            favorites.remove(entry.id)
+        } else {
+            favorites.insert(entry.id)
+        }
+        FavoritesStore.save(favorites)
+    }
+
+    /// Set favorite state for a batch of entries (used when right-click
+    /// fires on a multi-selection).
+    func setFavorite(_ favorite: Bool, ids: Set<Entry.ID>) {
+        if favorite {
+            favorites.formUnion(ids)
+        } else {
+            favorites.subtract(ids)
+        }
+        FavoritesStore.save(favorites)
     }
 
     /// Clear cached media for the selected entries, then re-run the
