@@ -100,20 +100,24 @@ struct ContentView: View {
         NavigationSplitView {
             sidebar
         } detail: {
-            detail
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    if showStatusBar {
-                        StatusBar(selectedEntries: selectedEntries,
-                                  totalCount: currentNode?.count ?? 0,
-                                  systemName: currentNode?.displayName,
-                                  verifications: library.verifications,
-                                  gridItemSize: $gridItemSize)
+            HStack(spacing: 0) {
+                detail
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        if showStatusBar {
+                            StatusBar(selectedEntries: selectedEntries,
+                                      totalCount: currentNode?.count ?? 0,
+                                      systemName: currentNode?.displayName,
+                                      verifications: library.verifications,
+                                      gridItemSize: $gridItemSize)
+                        }
                     }
-                }
-                .inspector(isPresented: $showInspector) {
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if showInspector {
+                    Divider()
                     EntryInspector(entry: singleSelectedEntry)
-                        .inspectorColumnWidth(min: 240, ideal: 320, max: 480)
+                        .frame(width: 320)
                 }
+            }
         }
         .toolbar {
             ToolbarItem(id: "show-missing", placement: .primaryAction) {
@@ -126,9 +130,7 @@ struct ContentView: View {
             ToolbarItem(id: "media-kind", placement: .primaryAction) {
                 Picker("Media", selection: $mediaKind) {
                     ForEach(MediaKind.allCases) { kind in
-                        Image(systemName: kind.systemImage)
-                            .help(kind.label)
-                            .tag(kind)
+                        Image(systemName: kind.systemImage).tag(kind)
                     }
                 }
                 .pickerStyle(.segmented)
