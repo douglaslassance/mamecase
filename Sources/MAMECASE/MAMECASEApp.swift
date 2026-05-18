@@ -57,6 +57,7 @@ struct MAMECASEApp: App {
         Settings {
             SettingsView()
                 .environmentObject(settings)
+                .environmentObject(library)
         }
     }
 }

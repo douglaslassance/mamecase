@@ -19,6 +19,7 @@ struct SettingsView: View {
 
 private struct GeneralSettingsTab: View {
     @EnvironmentObject var settings: AppSettings
+    @EnvironmentObject var library: Library
 
     var body: some View {
         Form {
@@ -39,6 +40,31 @@ private struct GeneralSettingsTab: View {
                             .multilineTextAlignment(.leading)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Button("Choose…") { pickFile($settings.mameExecutablePath) }
+                        if BrewInstaller.brewExecutable() != nil {
+                            if library.mameMissing {
+                                Button {
+                                    Task { await library.installMameViaBrew(settings: settings) }
+                                } label: {
+                                    if library.installingMame {
+                                        ProgressView().controlSize(.small)
+                                    } else {
+                                        Text("Install with Homebrew")
+                                    }
+                                }
+                                .disabled(library.installingMame)
+                            } else if library.mameBrewManaged {
+                                Button {
+                                    Task { await library.upgradeMameViaBrew(settings: settings) }
+                                } label: {
+                                    if library.upgradingMame {
+                                        ProgressView().controlSize(.small)
+                                    } else {
+                                        Text(library.mameUpdateAvailable ? "Update with Homebrew" : "Up to Date")
+                                    }
+                                }
+                                .disabled(library.upgradingMame || !library.mameUpdateAvailable)
+                            }
+                        }
                     }
                 }
             }
@@ -55,12 +81,20 @@ private struct GeneralSettingsTab: View {
 
             Section {
                 LabeledContent("Base URL") {
-                    TextField("",
-                              text: $settings.romDownloadBaseURL,
-                              prompt: Text(AppSettingsDefaults.romDownloadBaseURL))
-                        .textFieldStyle(.roundedBorder)
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 8) {
+                        TextField("",
+                                  text: $settings.romDownloadBaseURL,
+                                  prompt: Text(AppSettingsDefaults.romDownloadBaseURL))
+                            .textFieldStyle(.roundedBorder)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button("Open") {
+                            let raw = settings.romDownloadBaseURL.isEmpty
+                                ? AppSettingsDefaults.romDownloadBaseURL
+                                : settings.romDownloadBaseURL
+                            if let url = URL(string: raw) { NSWorkspace.shared.open(url) }
+                        }
+                    }
                 }
             } header: {
                 Text("ROM downloads")

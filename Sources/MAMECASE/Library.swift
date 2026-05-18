@@ -45,6 +45,9 @@ final class Library: ObservableObject {
     @Published var mameMissing: Bool = false
     @Published var brewAvailable: Bool = false
     @Published var installingMame: Bool = false
+    @Published var mameBrewManaged: Bool = false
+    @Published var mameUpdateAvailable: Bool = false
+    @Published var upgradingMame: Bool = false
     @Published var sevenZipMissing: Bool = false
     @Published var installingSevenZip: Bool = false
     /// Set of media kinds we've already kicked off an archive-extraction
@@ -162,6 +165,17 @@ final class Library: ObservableObject {
             Task { [weak self] in
                 await self?.indexArcade()
             }
+            // Brew-manage check + update probe runs in the background; the
+            // gear-button badge picks it up via @Published.
+            mameBrewManaged = BrewInstaller.isMameBrewManaged()
+            if mameBrewManaged {
+                Task { [weak self] in
+                    let outdated = await BrewInstaller.isMameOutdated()
+                    await MainActor.run { self?.mameUpdateAvailable = outdated }
+                }
+            } else {
+                mameUpdateAvailable = false
+            }
         } catch MameConfigError.executableNotFound {
             self.mameMissing = true
             self.brewAvailable = BrewInstaller.brewExecutable() != nil
@@ -172,7 +186,11 @@ final class Library: ObservableObject {
 
     /// Run `brew install mame` and reload the library on success.
     func installMameViaBrew(settings: AppSettings) async {
-        guard !installingMame, brewAvailable else { return }
+        guard !installingMame else { return }
+        guard BrewInstaller.brewExecutable() != nil else {
+            loadError = "Homebrew not installed."
+            return
+        }
         installingMame = true
         arcadeStatus = "brew install mame…"
         let code = await BrewInstaller.installMame()
@@ -182,6 +200,22 @@ final class Library: ObservableObject {
             await load(settings: settings)
         } else {
             loadError = "Homebrew install failed (exit code \(code))."
+        }
+    }
+
+    /// Run `brew upgrade mame` and reload on success.
+    func upgradeMameViaBrew(settings: AppSettings) async {
+        guard !upgradingMame, mameBrewManaged else { return }
+        upgradingMame = true
+        arcadeStatus = "brew upgrade mame…"
+        let code = await BrewInstaller.upgradeMame()
+        arcadeStatus = nil
+        upgradingMame = false
+        if code == 0 {
+            mameUpdateAvailable = false
+            await load(settings: settings)
+        } else {
+            loadError = "Homebrew upgrade failed (exit code \(code))."
         }
     }
 
