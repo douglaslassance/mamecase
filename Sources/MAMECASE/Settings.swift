@@ -8,6 +8,7 @@ final class AppSettings: ObservableObject {
         static let mameHomePath = "mameHomePath"
         static let mameExecutablePath = "mameExecutablePath"
         static let additionalRomPaths = "additionalRomPaths"
+        static let romDownloadBaseURL = "romDownloadBaseURL"
     }
 
     static var defaultMameHomePath: String { AppSettingsDefaults.mameHomePath }
@@ -25,6 +26,10 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(additionalRomPaths, forKey: Keys.additionalRomPaths) }
     }
 
+    @Published var romDownloadBaseURL: String {
+        didSet { UserDefaults.standard.set(romDownloadBaseURL, forKey: Keys.romDownloadBaseURL) }
+    }
+
     init() {
         let defaults = UserDefaults.standard
         // Empty string means "use the default" — the TextField will show the
@@ -32,6 +37,7 @@ final class AppSettings: ObservableObject {
         self.mameHomePath = defaults.string(forKey: Keys.mameHomePath) ?? ""
         self.mameExecutablePath = defaults.string(forKey: Keys.mameExecutablePath) ?? ""
         self.additionalRomPaths = (defaults.array(forKey: Keys.additionalRomPaths) as? [String]) ?? []
+        self.romDownloadBaseURL = defaults.string(forKey: Keys.romDownloadBaseURL) ?? ""
     }
 
     /// Resolved ~/.mame URL from `mameHomePath`. Expands `~`.
@@ -45,7 +51,8 @@ final class AppSettings: ObservableObject {
         SettingsSnapshot(
             mameHomePath: mameHomePath,
             mameExecutablePath: mameExecutablePath,
-            additionalRomPaths: additionalRomPaths
+            additionalRomPaths: additionalRomPaths,
+            romDownloadBaseURL: romDownloadBaseURL
         )
     }
 }
@@ -55,6 +62,7 @@ final class AppSettings: ObservableObject {
 enum AppSettingsDefaults {
     static let mameHomePath = "~/.mame"
     static let mameExecutablePath = "mame"
+    static let romDownloadBaseURL = "https://archive.org/download/mame-merged/"
 }
 
 /// Immutable value-type copy of Settings for use off the main actor.
@@ -65,6 +73,7 @@ struct SettingsSnapshot {
     let mameHomePath: String
     let mameExecutablePath: String
     let additionalRomPaths: [String]
+    let romDownloadBaseURL: String
 
     var effectiveMameHomePath: String {
         let trimmed = mameHomePath.trimmingCharacters(in: .whitespaces)
@@ -74,6 +83,11 @@ struct SettingsSnapshot {
     var effectiveMameExecutablePath: String {
         let trimmed = mameExecutablePath.trimmingCharacters(in: .whitespaces)
         return trimmed.isEmpty ? AppSettingsDefaults.mameExecutablePath : trimmed
+    }
+
+    var effectiveRomDownloadBaseURL: String {
+        let trimmed = romDownloadBaseURL.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? AppSettingsDefaults.romDownloadBaseURL : trimmed
     }
 
     var resolvedMameHome: URL {

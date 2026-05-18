@@ -48,6 +48,21 @@ private struct GeneralSettingsTab: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            Section {
+                LabeledContent("Base URL") {
+                    TextField("",
+                              text: $settings.romDownloadBaseURL,
+                              prompt: Text(AppSettingsDefaults.romDownloadBaseURL))
+                        .textFieldStyle(.roundedBorder)
+                }
+            } header: {
+                Text("ROM downloads")
+            } footer: {
+                Text("Mamecase appends `<shortname>.zip` to this URL when downloading a ROM. Leave blank to use the archive.org default.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
     }

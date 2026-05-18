@@ -550,13 +550,20 @@ final class Library: ObservableObject {
     /// arcade sets.
     func download(entries targets: [Entry], overwrite: Bool) async {
         let arcade = targets.filter { if case .arcade = $0.kind { true } else { false } }
+        let baseURL: String = {
+            let stored = UserDefaults.standard.string(forKey: "romDownloadBaseURL") ?? ""
+            let trimmed = stored.trimmingCharacters(in: .whitespaces)
+            return trimmed.isEmpty ? AppSettingsDefaults.romDownloadBaseURL : trimmed
+        }()
         for entry in arcade {
             guard let dest = downloadDestination(for: entry) else { continue }
             if !overwrite, FileManager.default.fileExists(atPath: dest.path) { continue }
             downloadingIDs.insert(entry.id)
             downloadStatus = "Downloading \(entry.shortName)…"
             do {
-                _ = try await RomDownloader.shared.download(shortName: entry.shortName, to: dest)
+                _ = try await RomDownloader.shared.download(shortName: entry.shortName,
+                                                            baseURL: baseURL,
+                                                            to: dest)
             } catch {
                 loadError = error.localizedDescription
             }

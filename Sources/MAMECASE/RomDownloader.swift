@@ -31,11 +31,15 @@ actor RomDownloader {
         self.session = URLSession(configuration: cfg)
     }
 
-    /// Downloads the named ROM to `destination`. Writes atomically; on
-    /// failure the destination is untouched.
-    func download(shortName: String, to destination: URL) async throws -> URL {
-        guard let encoded = shortName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
-              let url = URL(string: "https://archive.org/download/mame-merged/\(encoded).zip")
+    /// Downloads the named ROM to `destination`. `baseURL` is the user-
+    /// configurable prefix (default `https://archive.org/download/mame-merged/`);
+    /// we append `<shortname>.zip`. Writes atomically; on failure the
+    /// destination is untouched.
+    func download(shortName: String, baseURL: String, to destination: URL) async throws -> URL {
+        guard let encoded = shortName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+        else { throw RomDownloadError.notFound(shortName) }
+        let trimmedBase = baseURL.hasSuffix("/") ? baseURL : baseURL + "/"
+        guard let url = URL(string: "\(trimmedBase)\(encoded).zip")
         else { throw RomDownloadError.notFound(shortName) }
 
         let (tmpURL, response) = try await session.download(from: url)
