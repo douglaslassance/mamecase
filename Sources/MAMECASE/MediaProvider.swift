@@ -189,13 +189,30 @@ actor MediaProvider {
     }
 
     /// Extract every sibling archive for `kind` once (idempotent per
-    /// archive URL).
+    /// archive URL). Re-extracts (after wiping the kind's cache) when the
+    /// source archive on disk has changed since the last extraction.
     @discardableResult
     func extractArchivesIfNeeded(kind: MediaKind, config: MameConfig) async -> ExtractionResult {
         let archives = MediaProvider.archiveCandidates(for: kind, config: config)
         guard !archives.isEmpty else { return ExtractionResult() }
         let cacheDir = self.cacheDir(for: kind)
         var out = ExtractionResult()
+
+        // Compare each archive's current fingerprint with the cached one.
+        // Any mismatch (or absent cached record) → wipe this kind's cache
+        // entirely and force re-extract.
+        var fingerprints = MediaArchiveCache.load()
+        let staleArchives = archives.filter { archive in
+            guard let current = ArchiveFingerprint.current(for: archive) else { return true }
+            return fingerprints[archive.path].map { !$0.matches(current) } ?? true
+        }
+        if !staleArchives.isEmpty {
+            try? FileManager.default.removeItem(at: cacheDir)
+            try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+            for archive in archives {
+                extracted.remove(archive)
+            }
+        }
         for archive in archives {
             if extracted.contains(archive) { out.anySucceeded = true; continue }
             if let task = inFlight[archive] {
@@ -225,6 +242,9 @@ actor MediaProvider {
             case .success:
                 extracted.insert(archive)
                 out.anySucceeded = true
+                if let fingerprint = ArchiveFingerprint.current(for: archive) {
+                    fingerprints[archive.path] = fingerprint
+                }
             case .lfsPointer:
                 out.lfsPointers.append(archive)
             case .otherFailure:
@@ -236,6 +256,7 @@ actor MediaProvider {
         }
         if out.anySucceeded {
             await purgePlaceholders(in: cacheDir)
+            MediaArchiveCache.save(fingerprints)
         }
         return out
     }

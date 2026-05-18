@@ -3,8 +3,10 @@ import Foundation
 /// Scans `rompath` directories to determine which ROMs the user actually has.
 ///
 /// MAME conventions:
-///   * Arcade machines live at `<rompath>/<machine>.zip` (or `<machine>/`)
-///   * Software list items live at `<rompath>/<system>/<software>.zip` (or `<software>/`)
+///   * Arcade machines live at `<rompath>/<machine>.zip` (or `<machine>/`).
+///   * Software list items live at `<rompath>/<system>/<software>.{zip,7z,chd}`
+///     or `<rompath>/<system>/<software>/`. CD-based systems (PSX, Saturn,
+///     Dreamcast, …) typically use `.chd` per software item.
 struct PresenceIndex {
     /// Short names of arcade machines present on disk.
     let arcade: Set<String>
@@ -43,7 +45,7 @@ struct PresenceIndex {
                             let childName = child.deletingPathExtension().lastPathComponent
                             let childExt = child.pathExtension.lowercased()
                             let childIsDir = (try? child.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-                            if childIsDir || childExt == "zip" || childExt == "7z" {
+                            if childIsDir || ["zip", "7z", "chd"].contains(childExt) {
                                 owned.insert(childName)
                             }
                         }
