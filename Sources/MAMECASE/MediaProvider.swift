@@ -53,8 +53,9 @@ actor MediaProvider {
     /// Fetch the entry's media for `kind` online.
     ///   - Arcade: libretro-thumbnails MAME repo (works for both
     ///     `coverArt` → flyer/boxart, and `snap` → in-game shot).
-    ///   - Software: OpenVGDB lookup for `coverArt`. `snap` is unsupported
-    ///     (no comparable corpus) and returns nil.
+    ///   - Software cover art: libretro-thumbnails per-system repo via
+    ///     `LibretroThumbnails` (index-on-first-use + fuzzy match).
+    ///   - Software snap: no online source today; returns nil.
     /// Caches successful downloads at the same path used by
     /// archive-extracted media, so subsequent synchronous lookups pick it
     /// up automatically.
@@ -71,7 +72,7 @@ actor MediaProvider {
             candidates = libretroCandidates(for: entry, kind: kind)
         case .software:
             guard kind == .coverArt,
-                  let url = await OpenVGDB.shared.coverURL(forTitle: entry.displayName)
+                  let url = await LibretroThumbnails.shared.coverURL(for: entry)
             else {
                 onlineMisses.insert(key)
                 return nil
