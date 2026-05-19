@@ -268,6 +268,16 @@ struct ContentView: View {
             ToolbarItem(id: "settings", placement: .primaryAction) {
                 SettingsToolbarButton(updateAvailable: library.mameUpdateAvailable)
             }
+            ToolbarItem(id: "support", placement: .primaryAction) {
+                Button {
+                    if let url = URL(string: "https://ko-fi.com/douglaslassance") {
+                        NSWorkspace.shared.open(url)
+                    }
+                } label: {
+                    Image(systemName: "cup.and.saucer")
+                }
+                .help("Support Mamecase on Ko-fi")
+            }
         }
         .alert("Error",
                isPresented: Binding(get: { library.loadError != nil },
