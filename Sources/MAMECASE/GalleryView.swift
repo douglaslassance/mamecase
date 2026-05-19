@@ -724,6 +724,10 @@ private struct EntryTile: View {
                         // attention (bad / best-available / error). A
                         // green checkmark on every passing ROM is just
                         // noise once auto-verify has tagged the library.
+                        // The tooltip lives on the outer tile (see
+                        // `tileHelp`) because the gallery overlays an
+                        // NSView for click capture that swallows SwiftUI
+                        // hover events on inner views.
                         Image(systemName: status.systemImage)
                             .font(.callout)
                             .foregroundStyle(status.tint)
@@ -731,7 +735,6 @@ private struct EntryTile: View {
                             .background(.thinMaterial, in: Circle())
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                             .padding(6)
-                            .help(verificationHelp(status: status))
                     }
                 }
                 .frame(width: geo.size.width, height: geo.size.height)
@@ -786,7 +789,7 @@ private struct EntryTile: View {
                 .strokeBorder(selected ? Color.accentColor : Color.clear, lineWidth: 2)
         )
         .opacity(entry.owned ? 1.0 : 0.45)
-        .help("\(entry.displayName) — \(entry.shortName)\(entry.owned ? "" : " (missing)")")
+        .help(tileHelp)
         .task(id: "\(entry.id)/\(generation)/\(mediaKind.rawValue)") {
             await resolveMedia()
         }
@@ -840,6 +843,24 @@ private struct EntryTile: View {
         let head = "ROM status: \(status.label)"
         guard let d = statusDetails, !d.isEmpty else { return head }
         return "\(head)\n\(d)"
+    }
+
+    /// Whole-tile tooltip. The badge overlay's `.help` doesn't reach
+    /// the macOS tooltip layer because the gallery sticks an NSView
+    /// (MouseEventView) on top of every tile for click capture — that
+    /// view intercepts hover. So we surface name + verification verdict
+    /// + per-file diagnostics on the outer tile instead, and let the
+    /// help string change shape with status.
+    private var tileHelp: String {
+        var lines: [String] = ["\(entry.displayName) — \(entry.shortName)"]
+        if !entry.owned { lines.append("(missing)") }
+        if let s = status, s.isFailing {
+            lines.append("ROM status: \(s.label)")
+            if let d = statusDetails, !d.isEmpty {
+                lines.append(d)
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// Aspect ratio for the artwork tile, picked per-kind and per-system
