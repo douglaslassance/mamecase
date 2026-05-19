@@ -28,6 +28,16 @@ echo "▸ copying executable"
 cp "$BUILD_DIR/$APP_NAME" "$MACOS/$APP_NAME"
 chmod +x "$MACOS/$APP_NAME"
 
+# SPM emits resource catalogs (asset symbolsets, etc.) into a sibling
+# `<Module>_<Module>.bundle` next to the executable. We have to copy
+# that into the app's Resources or Bundle.module / our custom
+# appResources lookup can't find it at runtime.
+RES_BUNDLE="${APP_NAME}_${APP_NAME}.bundle"
+if [ -d "$BUILD_DIR/$RES_BUNDLE" ]; then
+    echo "▸ copying resource bundle"
+    cp -R "$BUILD_DIR/$RES_BUNDLE" "$RESOURCES/$RES_BUNDLE"
+fi
+
 echo "▸ rendering app icon"
 rm -rf "$ICONSET"
 swift scripts/render_icon.swift "$ICONSET"

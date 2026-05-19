@@ -58,16 +58,18 @@ struct GalleryView: View {
     }
 
     var body: some View {
-        ScrollView {
-            galleryContent(containerWidth: containerWidth)
-                .background(
-                    GeometryReader { geo in
-                        Color.clear.preference(key: GalleryWidthKey.self,
-                                               value: geo.size.width)
-                    }
-                )
+        // GeometryReader wraps the ScrollView (not its content) so width
+        // updates during AppKit live-resize. Inside the ScrollView a
+        // GeometryReader-as-content would collapse the scroll height,
+        // and `.background(GeometryReader)` only republishes after the
+        // resize ends — Peel uses the same outer-GeometryReader idiom.
+        GeometryReader { geo in
+            ScrollView {
+                galleryContent(containerWidth: geo.size.width)
+            }
+            .onChange(of: geo.size.width) { _, w in containerWidth = w }
+            .onAppear { containerWidth = geo.size.width }
         }
-        .onPreferenceChange(GalleryWidthKey.self) { containerWidth = $0 }
         .coordinateSpace(name: "gallery")
         .onPreferenceChange(TileFramesKey.self) { tileFrames = $0 }
         .overlay(alignment: .topLeading) {
@@ -265,14 +267,15 @@ struct GalleryView: View {
 
     @ViewBuilder
     private func tileContextMenu(for entry: Entry) -> some View {
-        Button("Launch") {
+        // Group 1: launch + verify.
+        Button {
             if selection.contains(entry.id), selection.count > 1 {
                 library.launch(ids: selection, in: system)
             } else {
                 library.launch(entry)
             }
-        }
-        Button(verifyMenuTitle(for: entry)) {
+        } label: { Label("Launch", systemImage: "play.fill") }
+        Button {
             Task {
                 if selection.contains(entry.id), selection.count > 1 {
                     await library.verify(ids: selection, in: system)
@@ -280,43 +283,51 @@ struct GalleryView: View {
                     await library.verify(entry)
                 }
             }
-        }
+        } label: { Label(verifyMenuTitle(for: entry), systemImage: "checkmark.seal") }
         .disabled(library.config == nil)
-        if case .arcade = entry.kind {
-            Button(downloadMenuTitle(for: entry)) {
-                startDownload(triggeredBy: entry)
-            }
-            .disabled(library.config == nil)
-        }
-        Button(favoriteMenuTitle(for: entry)) {
+
+        Divider()
+
+        // Group 2: favourite + playlists.
+        Button {
             toggleFavorite(triggeredBy: entry)
-        }
-        Menu("Add to Playlist") {
+        } label: { Label(favoriteMenuTitle(for: entry), systemImage: favoriteMenuSymbol(for: entry)) }
+        Menu {
             ForEach(library.playlists) { p in
                 Button(p.name) {
                     library.addToPlaylist(p.id, entryIDs: batchIDs(triggeredBy: entry))
                 }
             }
             if !library.playlists.isEmpty { Divider() }
-            Button("New Playlist…") {
+            Button {
                 let p = library.createPlaylist(named: "New Playlist")
                 library.addToPlaylist(p.id, entryIDs: batchIDs(triggeredBy: entry))
-            }
-        }
+            } label: { Label("New Playlist…", systemImage: "plus") }
+        } label: { Label("Add to Playlist", systemImage: "text.badge.plus") }
         if case .cross(let scope) = system.kind,
            case .playlist(let pid) = scope {
-            Button("Remove from Playlist") {
+            Button {
                 library.removeFromPlaylist(pid, entryIDs: batchIDs(triggeredBy: entry))
-            }
+            } label: { Label("Remove from Playlist", systemImage: "minus.circle") }
         }
-        Button(downloadMediaMenuTitle(for: entry)) {
+
+        Divider()
+
+        // Group 3: media + ROM downloads.
+        if case .arcade = entry.kind {
+            Button {
+                startDownload(triggeredBy: entry)
+            } label: { Label(downloadMenuTitle(for: entry), systemImage: "arrow.down.circle") }
+            .disabled(library.config == nil)
+        }
+        Button {
             Task {
                 let ids = batchIDs(triggeredBy: entry)
                 await library.downloadMedia(ids: ids, in: system)
             }
-        }
+        } label: { Label(downloadMediaMenuTitle(for: entry), systemImage: "photo.badge.arrow.down") }
         .disabled(library.config == nil)
-        Button(regenerateMenuTitle(for: entry)) {
+        Button {
             Task {
                 if selection.contains(entry.id), selection.count > 1 {
                     await library.regenerateMedia(ids: selection, in: system)
@@ -324,41 +335,59 @@ struct GalleryView: View {
                     await library.regenerateMedia(ids: [entry.id], in: system)
                 }
             }
-        }
+        } label: { Label(regenerateMenuTitle(for: entry), systemImage: "arrow.clockwise") }
         .disabled(library.config == nil)
-        Button(deleteMenuTitle(for: entry), role: .destructive) {
+
+        Divider()
+
+        // Group 4: reveal + copy (single-entry only).
+        if !isMultiSelected(entry) {
+            if let snap = library.mediaURL(for: entry, kind: .snap) {
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([snap])
+                } label: { Label("Reveal Snapshot in Finder", systemImage: "magnifyingglass") }
+            }
+            Button {
+                copyToPasteboard(entry.shortName)
+            } label: { Label("Copy ROM Name", systemImage: "doc.on.doc") }
+            Button {
+                copyToPasteboard(launchCommand(for: entry))
+            } label: { Label("Copy Launch Command", systemImage: "terminal") }
+            .disabled(library.config == nil)
+
+            Divider()
+
+            // Group 5: external lookups.
+            if case .arcade = entry.kind {
+                Button {
+                    openSearch(for: entry, on: .arcadeDatabase)
+                } label: { Label("Open in Arcade Database", systemImage: "safari") }
+            }
+            Button {
+                openSearch(for: entry, on: .eBay)
+            } label: { Label("Search on eBay", systemImage: "magnifyingglass.circle") }
+
+            Divider()
+        }
+
+        // Group 6: destructive.
+        Button(role: .destructive) {
             let targets = library
                 .entries(for: system, hideMissing: false)
                 .filter { batchIDs(triggeredBy: entry).contains($0.id) }
                 .filter(\.owned)
             guard !targets.isEmpty else { return }
             pendingDelete = PendingDelete(targets: targets)
-        }
+        } label: { Label(deleteMenuTitle(for: entry), systemImage: "trash") }
         .disabled(library.config == nil)
-        if !isMultiSelected(entry) {
-            Divider()
-            if let snap = library.mediaURL(for: entry, kind: .snap) {
-                Button("Reveal Snapshot in Finder") {
-                    NSWorkspace.shared.activateFileViewerSelecting([snap])
-                }
-            }
-            Button("Copy ROM Name") {
-                copyToPasteboard(entry.shortName)
-            }
-            Button("Copy Launch Command") {
-                copyToPasteboard(launchCommand(for: entry))
-            }
-            .disabled(library.config == nil)
-            Divider()
-            if case .arcade = entry.kind {
-                Button("Open in Arcade Database") {
-                    openSearch(for: entry, on: .arcadeDatabase)
-                }
-            }
-            Button("Search on eBay") {
-                openSearch(for: entry, on: .eBay)
-            }
-        }
+    }
+
+    /// Symbol matching the favourite toggle's current effect — filled
+    /// star when we'd be adding to favourites, slashed star when removing.
+    private func favoriteMenuSymbol(for entry: Entry) -> String {
+        let targets = batchTargets(triggeredBy: entry)
+        let allFavorited = targets.allSatisfy { library.favorites.contains($0.id) }
+        return allFavorited ? "star.slash" : "star"
     }
 
     private func verifyMenuTitle(for entry: Entry) -> String {
@@ -737,6 +766,12 @@ private struct EntryTile: View {
             .frame(minHeight: 14, alignment: .leading)
         }
         .padding(8)
+        // When the parent masonry pins the artwork to a specific width
+        // (horizontal layout in particular), constrain the entire tile so
+        // its title/meta rows don't stretch the chrome wider than the
+        // artwork. The +16 matches `TileChrome.horizontal` (8pt padding
+        // on each side).
+        .frame(width: fixedArtworkSize.map { $0.width + 16 })
         .background(
             RoundedRectangle(cornerRadius: CGFloat(tileCornerRadius))
                 .fill(selected ? Color.accentColor.opacity(0.25) : Color.clear)

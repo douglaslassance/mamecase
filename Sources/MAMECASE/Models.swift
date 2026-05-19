@@ -135,8 +135,8 @@ struct Playlist: Identifiable, Hashable, Codable {
 /// `DisplayName.format(...).flags`.
 /// How the gallery arranges tiles.
 enum LayoutMode: String, CaseIterable, Identifiable {
-    case verticalMasonry
     case horizontalMasonry
+    case verticalMasonry
 
     var id: String { rawValue }
 
