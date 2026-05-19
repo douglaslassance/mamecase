@@ -206,7 +206,7 @@ private struct GeneralSettingsTab: View {
             } header: {
                 Text("ROM downloads")
             } footer: {
-                Text("Mamecase appends `<shortname>.zip` to this URL when downloading a ROM. Leave blank to hide the Download ROM action.")
+                Text("Mamecase appends `<shortname>.zip` to this URL when downloading a ROM.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
