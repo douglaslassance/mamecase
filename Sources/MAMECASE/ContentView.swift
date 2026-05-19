@@ -85,7 +85,7 @@ struct ContentView: View {
         }
     }
 
-    private var sidebarSystems: [SystemNode] { librarySystems + playlistSystems + systems }
+    private var sidebarSystems: [SystemNode] { librarySystems + systems + playlistSystems }
 
     private var currentNode: SystemNode? {
         guard let id = selection else { return nil }
@@ -325,6 +325,11 @@ struct ContentView: View {
             Section("Library") {
                 ForEach(librarySystems) { node in sidebarRow(node) }
             }
+            if !systems.isEmpty {
+                Section("Systems") {
+                    ForEach(systems) { node in sidebarRow(node) }
+                }
+            }
             Section {
                 ForEach(playlistSystems) { node in
                     sidebarRow(node)
@@ -350,11 +355,6 @@ struct ContentView: View {
                     }
                     .buttonStyle(.plain)
                     .help("New Playlist")
-                }
-            }
-            if !systems.isEmpty {
-                Section("Systems") {
-                    ForEach(systems) { node in sidebarRow(node) }
                 }
             }
         }
