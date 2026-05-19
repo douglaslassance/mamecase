@@ -50,7 +50,7 @@ struct ContentView: View {
     @AppStorage("controllerScheme") private var controllerScheme: String = ""
     @AppStorage("shaderScheme") private var shaderScheme: String = ""
     @AppStorage("regionFilter") private var regionFilter: RegionFilter = .all
-    @AppStorage("layoutMode") private var layoutMode: LayoutMode = .grid
+    @AppStorage("layoutMode") private var layoutMode: LayoutMode = .verticalMasonry
     @State private var selection: SystemNode.ID?
     @State private var entrySelection: Set<Entry.ID> = []
     @State private var searchText: String = ""
@@ -172,7 +172,7 @@ struct ContentView: View {
             ToolbarItem(id: "layout-mode", placement: .primaryAction) {
                 Picker("Layout", selection: $layoutMode) {
                     ForEach(LayoutMode.allCases) { mode in
-                        Image(systemName: mode.systemImage)
+                        Image(moduleSymbol: mode.moduleSymbol)
                             .help(mode.label)
                             .tag(mode)
                     }

@@ -3,6 +3,7 @@ import AppKit
 
 struct GalleryView: View {
     @EnvironmentObject var library: Library
+    @ObservedObject private var imageSizes = ImageSizeCache.shared
     let system: SystemNode
     let hideMissing: Bool
     let showFavoritesOnly: Bool
@@ -19,16 +20,13 @@ struct GalleryView: View {
     @State private var marqueeCurrent: CGPoint?
     @State private var marqueeBase: Set<Entry.ID> = []
     @State private var marqueeAdditive: Bool = false
+    @State private var containerWidth: CGFloat = 0
     @FocusState private var focused: Bool
 
     private var marqueeRect: CGRect? {
         guard let a = marqueeStart, let b = marqueeCurrent else { return nil }
         return CGRect(x: min(a.x, b.x), y: min(a.y, b.y),
                       width: abs(a.x - b.x), height: abs(a.y - b.y))
-    }
-
-    private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: gridItemSize, maximum: gridItemSize * 1.4), spacing: 16)]
     }
 
     private var entries: [Entry] {
@@ -59,14 +57,15 @@ struct GalleryView: View {
 
     var body: some View {
         ScrollView {
-            GeometryReader { outer in
-                galleryContent(containerWidth: outer.size.width)
-            }
-            .frame(minHeight: 0)
-            // Let SwiftUI grow the ScrollView's content vertically as the
-            // masonry/grid sets its own intrinsic height.
-            .fixedSize(horizontal: false, vertical: true)
+            galleryContent(containerWidth: containerWidth)
+                .background(
+                    GeometryReader { geo in
+                        Color.clear.preference(key: GalleryWidthKey.self,
+                                               value: geo.size.width)
+                    }
+                )
         }
+        .onPreferenceChange(GalleryWidthKey.self) { containerWidth = $0 }
         .coordinateSpace(name: "gallery")
         .onPreferenceChange(TileFramesKey.self) { tileFrames = $0 }
         .overlay(alignment: .topLeading) {
@@ -133,10 +132,6 @@ struct GalleryView: View {
         let inner = max(0, containerWidth - 32)
         VStack(alignment: .leading, spacing: 0) {
             switch layoutMode {
-            case .grid:
-                LazyVGrid(columns: columns, spacing: 16) {
-                    ForEach(entries) { entry in tileView(for: entry, fixedSize: nil) }
-                }
             case .verticalMasonry:
                 VerticalMasonryView(
                     entries: entries,
@@ -163,6 +158,7 @@ struct GalleryView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(16)
         .background(
             GalleryBackgroundView(
@@ -186,9 +182,16 @@ struct GalleryView: View {
         )
     }
 
-    /// Per-entry aspect ratio used by masonry layouts. Falls back to the
-    /// per-system default until image-size discovery lands.
+    /// Per-entry aspect ratio (width / height) used by masonry layouts.
+    /// Prefers the real natural ratio reported by `ImageSizeCache`; falls
+    /// back to the per-system convention while the size is being loaded
+    /// or when no media is available for the entry.
     private func artworkAspect(for entry: Entry) -> CGFloat {
+        if let url = library.mediaURL(for: entry, kind: entryMediaPreference),
+           let size = imageSizes.size(for: url),
+           size.height > 0 {
+            return size.width / size.height
+        }
         switch entry.kind {
         case .arcade: return SnapAspectRatio.ratio(for: entry)
         case .software:
@@ -556,6 +559,17 @@ private struct ArtworkSizing: ViewModifier {
 struct PendingDownload {
     let targets: [Entry]
     let existing: [Entry]
+}
+
+/// Carries the gallery ScrollView's content width up to the GalleryView
+/// state so masonry layouts can flow without using GeometryReader as a
+/// container (which collapses ScrollView height and breaks scrolling).
+struct GalleryWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        let next = nextValue()
+        if next > 0 { value = next }
+    }
 }
 
 /// Collects each visible tile's frame in the gallery coordinate space so

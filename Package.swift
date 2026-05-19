@@ -7,7 +7,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "Mamecase",
-            path: "Sources/MAMECASE"
+            path: "Sources/MAMECASE",
+            resources: [
+                .process("Resources")
+            ]
         )
     ]
 )

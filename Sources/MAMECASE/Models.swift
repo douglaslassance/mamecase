@@ -135,23 +135,22 @@ struct Playlist: Identifiable, Hashable, Codable {
 /// `DisplayName.format(...).flags`.
 /// How the gallery arranges tiles.
 enum LayoutMode: String, CaseIterable, Identifiable {
-    case grid
     case verticalMasonry
     case horizontalMasonry
 
     var id: String { rawValue }
 
-    var systemImage: String {
+    /// Custom SF-symbol-shaped asset shipped in our xcassets bundle so we
+    /// match the look used by Peel.
+    var moduleSymbol: String {
         switch self {
-        case .grid: return "square.grid.2x2"
-        case .verticalMasonry: return "rectangle.split.3x1"
-        case .horizontalMasonry: return "rectangle.split.1x2"
+        case .verticalMasonry: return "square.masonry.vertical.2x2"
+        case .horizontalMasonry: return "square.masonry.horizontal.2x2"
         }
     }
 
     var label: String {
         switch self {
-        case .grid: return "Grid"
         case .verticalMasonry: return "Vertical Masonry"
         case .horizontalMasonry: return "Horizontal Masonry"
         }
@@ -160,30 +159,27 @@ enum LayoutMode: String, CaseIterable, Identifiable {
 
 enum RegionFilter: String, CaseIterable, Identifiable {
     case all
+    case japan
     case usa
     case europe
-    case japan
-    case world
 
     var id: String { rawValue }
 
     var emoji: String {
         switch self {
-        case .all: return "🌐"
+        case .all: return "🌍"
+        case .japan: return "🇯🇵"
         case .usa: return "🇺🇸"
         case .europe: return "🇪🇺"
-        case .japan: return "🇯🇵"
-        case .world: return "🌍"
         }
     }
 
     var label: String {
         switch self {
         case .all: return "All Regions"
+        case .japan: return "Japan"
         case .usa: return "USA"
         case .europe: return "Europe"
-        case .japan: return "Japan"
-        case .world: return "World"
         }
     }
 
