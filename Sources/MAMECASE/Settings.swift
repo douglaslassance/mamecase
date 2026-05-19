@@ -59,16 +59,12 @@ final class AppSettings: ObservableObject {
 
 /// Default values, kept outside the MainActor-isolated class so they can be
 /// referenced from any context (e.g. the loader).
-///
-/// Note: we deliberately ship `romDownloadBaseURL` as empty. The user must
-/// supply their own source — Mamecase doesn't endorse any particular site
-/// (and a one-click piracy frontend would be a problem for distribution).
-/// For reference, the archive.org `mame-merged` collection follows the
-/// `<shortname>.zip` filename convention this code expects:
-///   https://archive.org/download/mame-merged/
 enum AppSettingsDefaults {
     static let mameHomePath = "~/.mame"
     static let mameExecutablePath = "mame"
+    // The archive.org `mame-merged` collection matches the
+    // `<shortname>.zip` convention this code expects:
+    //   https://archive.org/download/mame-merged/
     static let romDownloadBaseURL = ""
 }
 

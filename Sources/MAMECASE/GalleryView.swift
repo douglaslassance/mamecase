@@ -348,11 +348,8 @@ struct GalleryView: View {
 
         Divider()
 
-        // Group 3: media + ROM downloads.
-        // "Download ROM" is hidden when no Base URL is configured — we
-        // ship that field blank so Mamecase isn't a one-click piracy
-        // frontend out of the box. The user has to opt in by pasting
-        // their own source in Settings → ROM downloads.
+        // Group 3: media + ROM downloads. "Download ROM" only renders
+        // when the user has configured a Base URL in Settings.
         if case .arcade = entry.kind, romDownloadConfigured {
             Button {
                 startDownload(triggeredBy: entry)
@@ -495,9 +492,7 @@ struct GalleryView: View {
         return false
     }
 
-    /// True when the user has configured a ROM download source. Mamecase
-    /// ships with this blank by design (see `AppSettingsDefaults`), so
-    /// the context-menu Download action is opt-in.
+    /// True when the user has configured a ROM download source.
     private var romDownloadConfigured: Bool {
         !settings.romDownloadBaseURL
             .trimmingCharacters(in: .whitespaces)
