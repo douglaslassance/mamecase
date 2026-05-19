@@ -42,6 +42,7 @@ struct ContentView: View {
     @EnvironmentObject var settings: AppSettings
     @AppStorage("showMissingFiles") private var showMissing: Bool = false
     @AppStorage("showFavoritesOnly") private var showFavoritesOnly: Bool = false
+    @AppStorage("showFailingOnly") private var showFailingOnly: Bool = false
     @AppStorage("mediaKind") private var mediaKind: MediaKind = .coverArt
     @AppStorage("gridItemSize") private var gridItemSize: Double = 180
     @AppStorage("showStatusBar") private var showStatusBar: Bool = true
@@ -117,6 +118,13 @@ struct ContentView: View {
             let favs = library.favorites
             all = all.filter { favs.contains($0.id) }
         }
+        if showFailingOnly {
+            let v = library.verifications
+            all = all.filter { entry in
+                guard let s = v[entry.id] else { return false }
+                return s.isFailing
+            }
+        }
         if regionFilter != .all {
             all = all.filter { regionFilter.matches($0.displayName) }
         }
@@ -177,6 +185,13 @@ struct ContentView: View {
                 }
                 .toggleStyle(.button)
                 .help("Show entries you don't have a ROM for")
+            }
+            ToolbarItem(id: "show-failing", placement: .primaryAction) {
+                Toggle(isOn: $showFailingOnly) {
+                    Label("Failing Verification Only", systemImage: "exclamationmark.shield")
+                }
+                .toggleStyle(.button)
+                .help("Only show ROMs whose verification is bad, best-available, or errored")
             }
             ToolbarItem(id: "media-kind", placement: .primaryAction) {
                 Picker("Media", selection: $mediaKind) {
@@ -405,6 +420,7 @@ struct ContentView: View {
             GalleryView(system: node,
                         hideMissing: !showMissing,
                         showFavoritesOnly: showFavoritesOnly,
+                        showFailingOnly: showFailingOnly,
                         regionFilter: regionFilter,
                         layoutMode: layoutMode,
                         searchText: $searchText,

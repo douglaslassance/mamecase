@@ -266,6 +266,17 @@ enum RomStatus: String, Codable, Sendable {
         case .error: return .orange
         }
     }
+
+    /// True when the verdict warrants the "failing verification" filter:
+    /// outright bad, best-available (playable but flawed), or an audit
+    /// that didn't parse cleanly. `.good` and `.notFound` are excluded —
+    /// notFound is the "missing files" axis covered by its own toggle.
+    var isFailing: Bool {
+        switch self {
+        case .bad, .bestAvailable, .error: return true
+        case .good, .notFound: return false
+        }
+    }
 }
 
 struct MameConfig {

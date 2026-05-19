@@ -7,6 +7,7 @@ struct GalleryView: View {
     let system: SystemNode
     let hideMissing: Bool
     let showFavoritesOnly: Bool
+    let showFailingOnly: Bool
     let regionFilter: RegionFilter
     let layoutMode: LayoutMode
     @Binding var searchText: String
@@ -36,6 +37,13 @@ struct GalleryView: View {
         if showFavoritesOnly {
             let favs = library.favorites
             all = all.filter { favs.contains($0.id) }
+        }
+        if showFailingOnly {
+            let v = library.verifications
+            all = all.filter { entry in
+                guard let s = v[entry.id] else { return false }
+                return s.isFailing
+            }
         }
         if regionFilter != .all {
             all = all.filter { regionFilter.matches($0.displayName) }
