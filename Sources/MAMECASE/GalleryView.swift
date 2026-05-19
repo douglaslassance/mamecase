@@ -139,10 +139,8 @@ struct GalleryView: View {
                     targetColumnWidth: gridItemSize,
                     spacing: 16,
                     aspectRatio: { artworkAspect(for: $0) }
-                ) { entry, size in
-                    tileView(for: entry,
-                             fixedSize: CGSize(width: size.width,
-                                               height: size.height - 38))
+                ) { entry, artworkSize in
+                    tileView(for: entry, fixedSize: artworkSize)
                 }
             case .horizontalMasonry:
                 HorizontalMasonryView(
@@ -151,10 +149,8 @@ struct GalleryView: View {
                     targetRowHeight: gridItemSize,
                     spacing: 16,
                     aspectRatio: { artworkAspect(for: $0) }
-                ) { entry, size in
-                    tileView(for: entry,
-                             fixedSize: CGSize(width: size.width,
-                                               height: size.height - 38))
+                ) { entry, artworkSize in
+                    tileView(for: entry, fixedSize: artworkSize)
                 }
             }
         }
@@ -183,15 +179,18 @@ struct GalleryView: View {
     }
 
     /// Per-entry aspect ratio (width / height) used by masonry layouts.
-    /// Prefers the real natural ratio reported by `ImageSizeCache`; falls
-    /// back to the per-system convention while the size is being loaded
-    /// or when no media is available for the entry.
+    /// Resolution order:
+    ///   1. real natural ratio from `ImageSizeCache` (loaded asynchronously)
+    ///   2. per-system convention if the entry has a media URL but the
+    ///      size hasn't streamed in yet
+    ///   3. square (1.0) when no media is available at all — the
+    ///      gamepad placeholder should always render in a uniform box.
     private func artworkAspect(for entry: Entry) -> CGFloat {
-        if let url = library.mediaURL(for: entry, kind: entryMediaPreference),
-           let size = imageSizes.size(for: url),
-           size.height > 0 {
+        let url = library.mediaURL(for: entry, kind: entryMediaPreference)
+        if let url, let size = imageSizes.size(for: url), size.height > 0 {
             return size.width / size.height
         }
+        guard url != nil else { return 1.0 }
         switch entry.kind {
         case .arcade: return SnapAspectRatio.ratio(for: entry)
         case .software:

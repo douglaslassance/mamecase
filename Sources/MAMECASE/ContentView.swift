@@ -97,11 +97,30 @@ struct ContentView: View {
         HStack {
             Text(node.displayName).lineLimit(1)
             Spacer()
-            Text("\(node.count)")
+            Text("\(filteredCount(for: node))")
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 1)
+                .background(Capsule().fill(Color.secondary.opacity(0.18)))
         }
         .tag(Optional(node.id))
+    }
+
+    /// Same filters the gallery applies, so the sidebar count matches
+    /// what the user actually sees: missing toggle + favourites only +
+    /// region. Search is intentionally NOT applied — it's a per-system
+    /// view-level concern, not a global library filter.
+    private func filteredCount(for node: SystemNode) -> Int {
+        var all = library.entries(for: node, hideMissing: !showMissing)
+        if showFavoritesOnly {
+            let favs = library.favorites
+            all = all.filter { favs.contains($0.id) }
+        }
+        if regionFilter != .all {
+            all = all.filter { regionFilter.matches($0.displayName) }
+        }
+        return all.count
     }
 
     /// Resolve currently-selected entry IDs to full `Entry` records using
