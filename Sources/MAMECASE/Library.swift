@@ -724,14 +724,25 @@ final class Library: ObservableObject {
         let cap = 2
         // Flush updates to @Published storage every N completions so
         // the gallery re-renders ~periodically instead of per-entry.
-        let flushEvery = 50
+        // Larger batches mean fewer ContentView body recomputes (each
+        // walks every sidebar pill via `filteredCount`), so coarser
+        // here = smoother scroll while the audit runs.
+        let flushEvery = 200
+
+        // NB: we deliberately don't touch `verifyingIDs` inside the
+        // bulk loop. It's @Published, and toggling it twice per entry
+        // (insert before, remove after) over thousands of entries was
+        // the main source of UI stalls — each mutation fires
+        // objectWillChange on Library, which re-renders ContentView
+        // and walks every sidebar pill via `filteredCount`. Per-tile
+        // spinners during a 9k-entry pass aren't worth that cost; the
+        // status bar already shows aggregate progress.
 
         await withTaskGroup(of: (Entry, RomVerifier.Result).self) { group in
             var next = 0
             // Seed initial batch.
             while next < min(cap, pending.count) {
                 let entry = pending[next]
-                verifyingIDs.insert(entry.id)
                 group.addTask {
                     let result = await RomVerifier.verify(entry: entry,
                                                           executable: exe,
@@ -760,7 +771,6 @@ final class Library: ObservableObject {
 
             // Drain + refill.
             while let (entry, result) = await group.next() {
-                verifyingIDs.remove(entry.id)
                 pendingStatus[entry.id] = result.status
                 pendingDetails[entry.id] = result.details
                 verificationCache[entry.id] = VerificationCache.makeRecord(status: result.status,
@@ -776,7 +786,6 @@ final class Library: ObservableObject {
                 }
                 if next < pending.count {
                     let nextEntry = pending[next]
-                    verifyingIDs.insert(nextEntry.id)
                     group.addTask {
                         let r = await RomVerifier.verify(entry: nextEntry,
                                                          executable: exe,
