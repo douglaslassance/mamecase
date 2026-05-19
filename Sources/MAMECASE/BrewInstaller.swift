@@ -26,6 +26,37 @@ enum BrewInstaller {
         await upgrade(package: "mame")
     }
 
+    /// Run `<executable> -help` and return the first line, which is
+    /// where MAME prints its banner (e.g. `MAME v0.260 (mame0260)`).
+    /// Returns nil if the process fails or prints nothing useful.
+    static func mameVersion(executable: String) async -> String? {
+        await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
+            DispatchQueue.global(qos: .utility).async {
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: executable)
+                p.arguments = ["-help"]
+                let out = Pipe()
+                p.standardOutput = out
+                p.standardError = Pipe()
+                do {
+                    try p.run()
+                } catch {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                p.waitUntilExit()
+                let data = out.fileHandleForReading.readDataToEndOfFile()
+                let text = String(data: data, encoding: .utf8) ?? ""
+                let first = text
+                    .split(whereSeparator: { $0.isNewline })
+                    .first
+                    .map(String.init)?
+                    .trimmingCharacters(in: .whitespaces)
+                continuation.resume(returning: (first?.isEmpty == false) ? first : nil)
+            }
+        }
+    }
+
     /// True if MAME is currently installed via Homebrew (the executable
     /// lives under a Homebrew prefix).
     static func isMameBrewManaged() -> Bool {

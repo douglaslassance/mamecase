@@ -8,10 +8,110 @@ struct SettingsView: View {
         TabView {
             GeneralSettingsTab()
                 .tabItem { Label("General", systemImage: "gearshape") }
+            AppearanceSettingsTab()
+                .tabItem { Label("Appearance", systemImage: "paintpalette") }
             MediaSettingsTab()
                 .tabItem { Label("Media", systemImage: "photo.on.rectangle.angled") }
         }
         .frame(width: 600, height: 640)
+    }
+}
+
+// MARK: - Appearance
+
+/// Two sliders mirroring Peel's idiom: item spacing and tile corner
+/// radius. Both write straight into `@AppStorage`, which the gallery
+/// + tiles read directly.
+private struct AppearanceSettingsTab: View {
+    @AppStorage("itemSpacing") private var itemSpacing: Double = 16
+    @AppStorage("tileCornerRadius") private var tileCornerRadius: Double = 10
+
+    var body: some View {
+        Form {
+            Section("Item Spacing") {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("Compact")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 60, alignment: .leading)
+                        Slider(value: $itemSpacing, in: 2...32, step: 2)
+                        Text("Spacious")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 60, alignment: .trailing)
+                    }
+                    Text("\(Int(itemSpacing))px")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Section("Corner Radius") {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("Sharp")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 60, alignment: .leading)
+                        Slider(value: $tileCornerRadius, in: 0...20, step: 1)
+                        Text("Rounded")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 60, alignment: .trailing)
+                    }
+                    Text("\(Int(tileCornerRadius))px")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+/// Passive status pill rendered next to the MAME executable field.
+/// Two flavours: a green "Up to date" with the detected version, or an
+/// orange "Update available" hint that pairs with the active "Update
+/// with Homebrew" button next to it.
+private struct MameVersionBadge: View {
+    let version: String?
+    let updateAvailable: Bool
+
+    var body: some View {
+        let (tint, symbol, text) = appearance
+        HStack(spacing: 4) {
+            Image(systemName: symbol)
+            Text(text)
+        }
+        .font(.caption)
+        .foregroundStyle(tint)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(
+            Capsule().fill(tint.opacity(0.15))
+        )
+        .overlay(
+            Capsule().strokeBorder(tint.opacity(0.4), lineWidth: 0.5)
+        )
+        .help(version ?? "MAME version unknown")
+    }
+
+    private var appearance: (Color, String, String) {
+        let label = shortVersion ?? "Installed"
+        if updateAvailable {
+            return (.orange, "exclamationmark.circle.fill", "\(label) — update available")
+        }
+        return (.green, "checkmark.circle.fill", "\(label) — up to date")
+    }
+
+    /// Extract a tight version label from the banner — prefer `v0.260`
+    /// if present, otherwise fall back to the whole first line.
+    private var shortVersion: String? {
+        guard let v = version else { return nil }
+        if let range = v.range(of: #"v\d+\.\d+"#, options: .regularExpression) {
+            return String(v[range])
+        }
+        return v
     }
 }
 
@@ -40,30 +140,36 @@ private struct GeneralSettingsTab: View {
                             .multilineTextAlignment(.leading)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Button("Choose…") { pickFile($settings.mameExecutablePath) }
-                        if BrewInstaller.brewExecutable() != nil {
-                            if library.mameMissing {
-                                Button {
-                                    Task { await library.installMameViaBrew(settings: settings) }
-                                } label: {
-                                    if library.installingMame {
-                                        ProgressView().controlSize(.small)
-                                    } else {
-                                        Text("Install with Homebrew")
-                                    }
+                        if BrewInstaller.brewExecutable() != nil, library.mameMissing {
+                            Button {
+                                Task { await library.installMameViaBrew(settings: settings) }
+                            } label: {
+                                if library.installingMame {
+                                    ProgressView().controlSize(.small)
+                                } else {
+                                    Text("Install with Homebrew")
                                 }
-                                .disabled(library.installingMame)
-                            } else if library.mameBrewManaged {
+                            }
+                            .disabled(library.installingMame)
+                        }
+                        if !library.mameMissing, library.mameBrewManaged {
+                            MameVersionBadge(version: library.mameVersion,
+                                             updateAvailable: library.mameUpdateAvailable)
+                            if library.mameUpdateAvailable {
                                 Button {
                                     Task { await library.upgradeMameViaBrew(settings: settings) }
                                 } label: {
                                     if library.upgradingMame {
                                         ProgressView().controlSize(.small)
                                     } else {
-                                        Text(library.mameUpdateAvailable ? "Update with Homebrew" : "Up to Date")
+                                        Text("Update with Homebrew")
                                     }
                                 }
-                                .disabled(library.upgradingMame || !library.mameUpdateAvailable)
+                                .disabled(library.upgradingMame)
                             }
+                        } else if !library.mameMissing, library.mameVersion != nil {
+                            MameVersionBadge(version: library.mameVersion,
+                                             updateAvailable: false)
                         }
                     }
                 }

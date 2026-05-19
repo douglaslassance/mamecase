@@ -48,6 +48,9 @@ final class Library: ObservableObject {
     @Published var mameBrewManaged: Bool = false
     @Published var mameUpdateAvailable: Bool = false
     @Published var upgradingMame: Bool = false
+    /// First line of `mame -help` (e.g. `MAME v0.260 (mame0260)`). Nil
+    /// until the probe completes or if the binary doesn't respond.
+    @Published var mameVersion: String?
     @Published var sevenZipMissing: Bool = false
     @Published var installingSevenZip: Bool = false
     /// Set of media kinds we've already kicked off an archive-extraction
@@ -175,6 +178,14 @@ final class Library: ObservableObject {
                 }
             } else {
                 mameUpdateAvailable = false
+            }
+
+            // Probe the executable for its version banner. Runs once per
+            // load; result feeds the badge in Settings → General.
+            let exe = cfg.executable
+            Task { [weak self] in
+                let v = await BrewInstaller.mameVersion(executable: exe)
+                await MainActor.run { self?.mameVersion = v }
             }
         } catch MameConfigError.executableNotFound {
             self.mameMissing = true

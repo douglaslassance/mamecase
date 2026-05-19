@@ -13,6 +13,7 @@ struct GalleryView: View {
     @Binding var selection: Set<Entry.ID>
 
     @AppStorage("gridItemSize") private var gridItemSize: Double = 180
+    @AppStorage("itemSpacing") private var itemSpacing: Double = 16
     @State private var anchor: Entry.ID?
     @State private var pendingDownload: PendingDownload?
     @State private var pendingDelete: PendingDelete?
@@ -150,7 +151,8 @@ struct GalleryView: View {
 
     @ViewBuilder
     private func galleryContent(containerWidth: CGFloat) -> some View {
-        let inner = max(0, containerWidth - 32)
+        let pad = CGFloat(itemSpacing)
+        let inner = max(0, containerWidth - pad * 2)
         VStack(alignment: .leading, spacing: 0) {
             switch layoutMode {
             case .verticalMasonry:
@@ -158,7 +160,7 @@ struct GalleryView: View {
                     entries: entries,
                     containerWidth: inner,
                     targetColumnWidth: gridItemSize,
-                    spacing: 16,
+                    spacing: pad,
                     aspectRatio: { artworkAspect(for: $0) }
                 ) { entry, artworkSize in
                     tileView(for: entry, fixedSize: artworkSize)
@@ -168,7 +170,7 @@ struct GalleryView: View {
                     entries: entries,
                     containerWidth: inner,
                     targetRowHeight: gridItemSize,
-                    spacing: 16,
+                    spacing: pad,
                     aspectRatio: { artworkAspect(for: $0) }
                 ) { entry, artworkSize in
                     tileView(for: entry, fixedSize: artworkSize)
@@ -176,7 +178,7 @@ struct GalleryView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .padding(16)
+        .padding(pad)
         .background(
             GalleryBackgroundView(
                 onClick: { selection.removeAll() },
@@ -641,14 +643,21 @@ private struct EntryTile: View {
     var fixedArtworkSize: CGSize? = nil
 
     @AppStorage("mediaKind") private var mediaKind: MediaKind = .coverArt
+    @AppStorage("tileCornerRadius") private var tileCornerRadius: Double = 10
     @State private var snapURL: URL?
     @State private var coverURL: URL?
+
+    /// Corner radius applied to the inner artwork — slightly tighter than
+    /// the tile chrome so the artwork looks nested inside it. Clamps to 0.
+    private var artworkCornerRadius: CGFloat {
+        max(0, CGFloat(tileCornerRadius) - 2)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             GeometryReader { geo in
                 ZStack {
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: artworkCornerRadius)
                         .fill(.quaternary)
                     if let image = preferredImage() {
                         // Pin the image's frame to the GeometryReader's
@@ -695,7 +704,7 @@ private struct EntryTile: View {
                 .frame(width: geo.size.width, height: geo.size.height)
             }
             .modifier(ArtworkSizing(aspect: tileAspectRatio, fixedSize: fixedArtworkSize))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(RoundedRectangle(cornerRadius: artworkCornerRadius))
 
             // Line 1: just the cleaned title.
             let formatted = DisplayName.format(entry.displayName)
@@ -729,12 +738,12 @@ private struct EntryTile: View {
         }
         .padding(8)
         .background(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: CGFloat(tileCornerRadius))
                 .fill(selected ? Color.accentColor.opacity(0.25) : Color.clear)
         )
-        .background(RoundedRectangle(cornerRadius: 10).fill(.background.secondary))
+        .background(RoundedRectangle(cornerRadius: CGFloat(tileCornerRadius)).fill(.background.secondary))
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: CGFloat(tileCornerRadius))
                 .strokeBorder(selected ? Color.accentColor : Color.clear, lineWidth: 2)
         )
         .opacity(entry.owned ? 1.0 : 0.45)
