@@ -241,9 +241,6 @@ struct GalleryView: View {
     @ViewBuilder
     private func tileView(for entry: Entry, fixedSize: CGSize?) -> some View {
         EntryTile(entry: entry,
-                  status: library.verifications[entry.id],
-                  statusDetails: library.verificationDetails[entry.id],
-                  verifying: library.verifyingIDs.contains(entry.id),
                   selected: selection.contains(entry.id),
                   favorite: library.favorites.contains(entry.id),
                   generation: library.mediaGeneration,
@@ -273,7 +270,33 @@ struct GalleryView: View {
                     }
                 )
             )
+            // Verification spinner / badge sits ABOVE MouseEventView so
+            // clicks on the badge open the popover instead of being
+            // swallowed by the NSView-backed click capture below.
+            .overlay(alignment: .topTrailing) {
+                tileBadge(for: entry)
+                    // 8pt tile padding + 6pt inner badge padding =
+                    // matches where the badge used to live when it was
+                    // anchored to the artwork's GeometryReader.
+                    .padding(14)
+            }
             .contextMenu { tileContextMenu(for: entry) }
+    }
+
+    /// Top-right corner overlay: progress spinner while verifying, or
+    /// the clickable status badge when the latest audit flagged the ROM
+    /// as bad / best-available / error.
+    @ViewBuilder
+    private func tileBadge(for entry: Entry) -> some View {
+        if library.verifyingIDs.contains(entry.id) {
+            ProgressView()
+                .controlSize(.small)
+                .padding(6)
+                .background(.thinMaterial, in: Circle())
+        } else if let status = library.verifications[entry.id], status.isFailing {
+            VerificationBadge(status: status,
+                              details: library.verificationDetails[entry.id])
+        }
     }
 
     @ViewBuilder
@@ -603,6 +626,68 @@ struct GalleryView: View {
     }
 }
 
+/// Top-right corner badge surfacing a failing verification verdict.
+/// Click opens a popover with MAME's per-file diagnostics. Lives at the
+/// tile level (overlaid above the `MouseEventView` click capture) so
+/// clicks reach the button instead of being eaten by AppKit.
+private struct VerificationBadge: View {
+    let status: RomStatus
+    let details: String?
+    @State private var showing = false
+
+    var body: some View {
+        Button {
+            showing.toggle()
+        } label: {
+            Image(systemName: status.systemImage)
+                .font(.callout)
+                .foregroundStyle(status.tint)
+                .padding(4)
+                .background(.thinMaterial, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .help("ROM status: \(status.label) — click for details")
+        .popover(isPresented: $showing, arrowEdge: .top) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: status.systemImage)
+                        .foregroundStyle(status.tint)
+                    Text(status.label)
+                        .font(.headline)
+                }
+                Text(statusExplanation)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                if let d = details, !d.isEmpty {
+                    Divider()
+                    Text(d)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: 380, alignment: .leading)
+        }
+    }
+
+    /// One-line plain-English explanation of what the verdict means.
+    /// Verbatim from `RomStatus`'s doc comments so the popover stays in
+    /// sync with the colour scheme.
+    private var statusExplanation: String {
+        switch status {
+        case .bad:
+            return "Missing critical files or wrong checksums. The ROM likely won't run correctly."
+        case .bestAvailable:
+            return "Playable, but some optional files are missing or have wrong CRCs."
+        case .error:
+            return "Audit ran but MAME's output couldn't be parsed (or the process failed)."
+        case .good, .notFound:
+            return ""
+        }
+    }
+}
+
 /// Picks between aspect-ratio sizing (grid) and explicit-size sizing
 /// (masonry). Used by `EntryTile`'s artwork block.
 private struct ArtworkSizing: ViewModifier {
@@ -653,12 +738,6 @@ struct TileFramesKey: PreferenceKey {
 private struct EntryTile: View {
     @EnvironmentObject var library: Library
     let entry: Entry
-    let status: RomStatus?
-    /// Optional one-or-two-line explanation drawn from MAME's audit
-    /// output ("ROM xxx: BAD CRC", "missing files", …) — appended to
-    /// the badge tooltip when present.
-    var statusDetails: String?
-    let verifying: Bool
     let selected: Bool
     let favorite: Bool
     let generation: Int
@@ -712,30 +791,10 @@ private struct EntryTile: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                             .padding(6)
                     }
-                    if verifying {
-                        ProgressView()
-                            .controlSize(.small)
-                            .padding(6)
-                            .background(.thinMaterial, in: Circle())
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                            .padding(6)
-                    } else if let status, status.isFailing {
-                        // Only surface a badge when the verdict warrants
-                        // attention (bad / best-available / error). A
-                        // green checkmark on every passing ROM is just
-                        // noise once auto-verify has tagged the library.
-                        // The tooltip lives on the outer tile (see
-                        // `tileHelp`) because the gallery overlays an
-                        // NSView for click capture that swallows SwiftUI
-                        // hover events on inner views.
-                        Image(systemName: status.systemImage)
-                            .font(.callout)
-                            .foregroundStyle(status.tint)
-                            .padding(4)
-                            .background(.thinMaterial, in: Circle())
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                            .padding(6)
-                    }
+                    // NOTE: the verification spinner / status badge
+                    // lives in the outer GalleryView overlay so it can
+                    // sit ABOVE MouseEventView and receive clicks for
+                    // the details popover.
                 }
                 .frame(width: geo.size.width, height: geo.size.height)
             }
@@ -789,7 +848,7 @@ private struct EntryTile: View {
                 .strokeBorder(selected ? Color.accentColor : Color.clear, lineWidth: 2)
         )
         .opacity(entry.owned ? 1.0 : 0.45)
-        .help(tileHelp)
+        .help("\(entry.displayName) — \(entry.shortName)\(entry.owned ? "" : " (missing)")")
         .task(id: "\(entry.id)/\(generation)/\(mediaKind.rawValue)") {
             await resolveMedia()
         }
@@ -833,34 +892,6 @@ private struct EntryTile: View {
         case .arcade: return "Arcade"
         case .software(let sys): return library.softwareListDisplayName(for: sys) ?? sys
         }
-    }
-
-    /// Combines the audit verdict with MAME's own "what went wrong"
-    /// summary. Falls back to "ROM status: <label>" when there's no
-    /// detail string (e.g. status .good, or an older record from
-    /// before we captured details).
-    private func verificationHelp(status: RomStatus) -> String {
-        let head = "ROM status: \(status.label)"
-        guard let d = statusDetails, !d.isEmpty else { return head }
-        return "\(head)\n\(d)"
-    }
-
-    /// Whole-tile tooltip. The badge overlay's `.help` doesn't reach
-    /// the macOS tooltip layer because the gallery sticks an NSView
-    /// (MouseEventView) on top of every tile for click capture — that
-    /// view intercepts hover. So we surface name + verification verdict
-    /// + per-file diagnostics on the outer tile instead, and let the
-    /// help string change shape with status.
-    private var tileHelp: String {
-        var lines: [String] = ["\(entry.displayName) — \(entry.shortName)"]
-        if !entry.owned { lines.append("(missing)") }
-        if let s = status, s.isFailing {
-            lines.append("ROM status: \(s.label)")
-            if let d = statusDetails, !d.isEmpty {
-                lines.append(d)
-            }
-        }
-        return lines.joined(separator: "\n")
     }
 
     /// Aspect ratio for the artwork tile, picked per-kind and per-system
