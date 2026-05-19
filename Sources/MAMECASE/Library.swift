@@ -168,6 +168,15 @@ final class Library: ObservableObject {
             Task { [weak self] in
                 await self?.indexArcade()
             }
+
+            // Background verification of every owned ROM. Cache hits are
+            // instant; only entries whose ROM file changed (or were
+            // never verified) actually spawn a MAME audit, so this is
+            // cheap on a warm cache. Runs concurrently with the arcade
+            // index refresh above.
+            Task { [weak self] in
+                await self?.verifyAll()
+            }
             // Brew-manage check + update probe runs in the background; the
             // gear-button badge picks it up via @Published.
             mameBrewManaged = BrewInstaller.isMameBrewManaged()
@@ -644,11 +653,13 @@ final class Library: ObservableObject {
         }
     }
 
-    /// Verify every arcade and software entry. The cache is consulted
-    /// first so entries with an unchanged ROM file are accepted instantly.
-    /// The remainder are dispatched through a `TaskGroup` with a small
-    /// concurrency cap so we don't spawn thousands of MAME processes at
-    /// once — but we still saturate cores.
+    /// Verify every owned arcade and software entry. The cache is
+    /// consulted first so entries with an unchanged ROM file are accepted
+    /// instantly. The remainder are dispatched through a `TaskGroup` with
+    /// a small concurrency cap so we don't spawn thousands of MAME
+    /// processes at once — but we still saturate cores. Skips entries
+    /// the user doesn't own: their ROM file is by definition absent, so
+    /// the MAME audit only confirms what `tagOwnership` already told us.
     func verifyAll() async {
         guard let cfg = config, !isVerifyingAll else { return }
         isVerifyingAll = true
@@ -657,8 +668,10 @@ final class Library: ObservableObject {
             arcadeStatus = nil
         }
 
-        var all: [Entry] = arcadeEntries
-        for list in softwareLists { all.append(contentsOf: list.entries) }
+        var all: [Entry] = arcadeEntries.filter(\.owned)
+        for list in softwareLists {
+            all.append(contentsOf: list.entries.filter(\.owned))
+        }
         let total = all.count
 
         // First pass: apply cache hits, collect misses.
