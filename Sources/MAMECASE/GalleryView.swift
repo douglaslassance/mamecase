@@ -658,6 +658,9 @@ private struct VerificationBadge: View {
                 Text(statusExplanation)
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                    // Without this the popover gives Text a one-line
+                    // budget and ellipsis-truncates instead of wrapping.
+                    .fixedSize(horizontal: false, vertical: true)
                 if let d = details, !d.isEmpty {
                     Divider()
                     Text(d)
@@ -667,7 +670,7 @@ private struct VerificationBadge: View {
                 }
             }
             .padding(14)
-            .frame(maxWidth: 380, alignment: .leading)
+            .frame(width: 360, alignment: .leading)
         }
     }
 
