@@ -81,6 +81,9 @@ enum VerificationCache {
     ///     ANY cache entries — better to defer than to use stale data.
     ///   - `notFound` records: valid while the file is still absent.
     ///   - all others: file must exist with matching size + mtime.
+    ///   - Failing-status records (bad / bestAvailable / error) must
+    ///     have captured `details` — older records predate that field
+    ///     and we want to re-audit so the tooltip has something useful.
     static func freshStatus(for entry: Entry,
                             romPaths: [URL],
                             cache: [Entry.ID: Record],
@@ -93,6 +96,11 @@ enum VerificationCache {
               let recorded = record.mameVersion,
               recorded == current
         else { return nil }
+        // Pre-details cache entries lose their fast path so we capture
+        // the "what went wrong" lines on the next run.
+        if record.status.isFailing && record.details == nil {
+            return nil
+        }
         let url = romFile(for: entry, in: romPaths)
         if record.status == .notFound {
             return url == nil ? .notFound : nil

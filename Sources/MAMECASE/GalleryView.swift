@@ -719,7 +719,11 @@ private struct EntryTile: View {
                             .background(.thinMaterial, in: Circle())
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                             .padding(6)
-                    } else if let status {
+                    } else if let status, status.isFailing {
+                        // Only surface a badge when the verdict warrants
+                        // attention (bad / best-available / error). A
+                        // green checkmark on every passing ROM is just
+                        // noise once auto-verify has tagged the library.
                         Image(systemName: status.systemImage)
                             .font(.callout)
                             .foregroundStyle(status.tint)
