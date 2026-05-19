@@ -36,6 +36,22 @@ RES_BUNDLE="${APP_NAME}_${APP_NAME}.bundle"
 if [ -d "$BUILD_DIR/$RES_BUNDLE" ]; then
     echo "▸ copying resource bundle"
     cp -R "$BUILD_DIR/$RES_BUNDLE" "$RESOURCES/$RES_BUNDLE"
+
+    # swift build doesn't run actool, so the asset catalog stays as a
+    # raw `Assets.xcassets` directory which SwiftUI's `Image(name:bundle:)`
+    # can't read. Compile it manually into `Assets.car` next to the
+    # source catalog, then drop the source to keep the bundle clean.
+    if [ -d "$RESOURCES/$RES_BUNDLE/Assets.xcassets" ]; then
+        echo "▸ compiling asset catalog"
+        xcrun actool \
+            --compile "$RESOURCES/$RES_BUNDLE" \
+            --platform macosx \
+            --minimum-deployment-target 14.0 \
+            --target-device mac \
+            --output-format human-readable-text \
+            "$RESOURCES/$RES_BUNDLE/Assets.xcassets" > /dev/null
+        rm -rf "$RESOURCES/$RES_BUNDLE/Assets.xcassets"
+    fi
 fi
 
 echo "▸ rendering app icon"
