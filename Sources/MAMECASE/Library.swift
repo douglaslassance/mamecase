@@ -836,6 +836,7 @@ final class Library: ObservableObject {
             let trimmed = stored.trimmingCharacters(in: .whitespaces)
             return trimmed.isEmpty ? AppSettingsDefaults.romDownloadBaseURL : trimmed
         }()
+        var succeeded: [Entry] = []
         for entry in arcade {
             guard let dest = downloadDestination(for: entry) else { continue }
             if !overwrite, FileManager.default.fileExists(atPath: dest.path) { continue }
@@ -845,6 +846,7 @@ final class Library: ObservableObject {
                 _ = try await RomDownloader.shared.download(shortName: entry.shortName,
                                                             baseURL: baseURL,
                                                             to: dest)
+                succeeded.append(entry)
             } catch {
                 loadError = error.localizedDescription
             }
@@ -854,5 +856,16 @@ final class Library: ObservableObject {
         rebuildPresence()
         tagSoftwareOwnership()
         tagArcadeOwnership()
+
+        // Verify the freshly-downloaded ROMs so their badges reflect
+        // the new file instead of inheriting whatever (now-stale) verdict
+        // the cache had. The single-entry `verify(_:)` path writes the
+        // result to disk so the badge survives a relaunch.
+        guard !succeeded.isEmpty else { return }
+        downloadStatus = "Verifying \(succeeded.count) downloaded ROM\(succeeded.count == 1 ? "" : "s")…"
+        for entry in succeeded {
+            await verify(entry)
+        }
+        downloadStatus = nil
     }
 }
