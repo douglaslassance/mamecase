@@ -323,19 +323,9 @@ struct GalleryView: View {
         Button {
             Task {
                 let ids = batchIDs(triggeredBy: entry)
-                await library.downloadMedia(ids: ids, in: system)
+                await library.updateMedia(ids: ids, in: system)
             }
-        } label: { Label(downloadMediaMenuTitle(for: entry), systemImage: "photo.badge.arrow.down") }
-        .disabled(library.config == nil)
-        Button {
-            Task {
-                if selection.contains(entry.id), selection.count > 1 {
-                    await library.regenerateMedia(ids: selection, in: system)
-                } else {
-                    await library.regenerateMedia(ids: [entry.id], in: system)
-                }
-            }
-        } label: { Label(regenerateMenuTitle(for: entry), systemImage: "arrow.clockwise") }
+        } label: { Label(updateMediaMenuTitle(for: entry), systemImage: "photo.badge.arrow.down") }
         .disabled(library.config == nil)
 
         Divider()
@@ -400,14 +390,9 @@ struct GalleryView: View {
         return targets.count > 1 ? "Download \(targets.count) ROMs" : "Download ROM"
     }
 
-    private func regenerateMenuTitle(for entry: Entry) -> String {
+    private func updateMediaMenuTitle(for entry: Entry) -> String {
         let count = (selection.contains(entry.id) && selection.count > 1) ? selection.count : 1
-        return count > 1 ? "Regenerate Media for \(count) Entries" : "Regenerate Media"
-    }
-
-    private func downloadMediaMenuTitle(for entry: Entry) -> String {
-        let count = (selection.contains(entry.id) && selection.count > 1) ? selection.count : 1
-        return count > 1 ? "Download Media for \(count) Entries" : "Download Media"
+        return count > 1 ? "Update Media for \(count) Entries" : "Update Media"
     }
 
     /// "Delete ROM" / "Delete N ROMs". Always destructive — only enabled

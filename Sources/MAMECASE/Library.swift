@@ -410,26 +410,53 @@ final class Library: ObservableObject {
         await MediaProvider.shared.fetchOnline(for: entry, kind: kind)
     }
 
-    /// Explicit user-driven online fetch for a batch of entries — used by
-    /// the "Download Media" context-menu action, which is the only way to
-    /// populate art for ROMs the user doesn't own. Ignores any auto-fetch
-    /// gates; the concurrency cap in `MediaProvider` keeps it polite.
-    func downloadMedia(ids: Set<Entry.ID>, in system: SystemNode) async {
+    /// Re-run the full media-resolution chain for a batch of entries.
+    /// For each entry:
+    ///   1. Invalidate cached files + online-miss markers so we start
+    ///      from scratch.
+    ///   2. Ensure sibling archives have been extracted (snap.7z,
+    ///      flyers.zip, …); the actor dedupes work per archive.
+    ///   3. Check `MediaProvider.url(...)` — that covers loose files in
+    ///      the configured paths AND files unpacked into the cache by
+    ///      step 2.
+    ///   4. If still nothing, fall through to `fetchOnline`.
+    /// Bumps `mediaGeneration` so visible tiles refresh.
+    /// Works for both owned and unowned entries — the right-click action
+    /// is explicit, so the auto-fetch gate in `EntryTile.resolveMedia`
+    /// doesn't apply.
+    func updateMedia(ids: Set<Entry.ID>, in system: SystemNode) async {
+        guard let cfg = config else { return }
         let targets = entries(for: system, hideMissing: false).filter { ids.contains($0.id) }
         guard !targets.isEmpty else { return }
-        arcadeStatus = "Downloading media…"
+        arcadeStatus = "Updating media…"
         defer {
             arcadeStatus = nil
             mediaGeneration &+= 1
         }
+
+        // 1. Wipe cached files + miss markers for every target.
+        for entry in targets {
+            await MediaProvider.shared.invalidate(entry: entry)
+        }
+
+        // 2. Make sure archives have been unpacked (idempotent per
+        //    archive URL). The first call after launch does real work;
+        //    subsequent calls are near-instant.
+        for kind in MediaKind.allCases {
+            _ = await MediaProvider.shared.extractArchivesIfNeeded(kind: kind, config: cfg)
+        }
+
+        // 3 + 4. For each entry/kind, prefer a local file (loose or
+        //        archive-extracted), fall back to online.
         var done = 0
         for entry in targets {
             for kind in MediaKind.allCases {
+                if MediaProvider.url(for: entry, kind: kind, config: cfg) != nil { continue }
                 _ = await MediaProvider.shared.fetchOnline(for: entry, kind: kind)
             }
             done += 1
             if done % 5 == 0 || done == targets.count {
-                arcadeStatus = "Downloading media… \(done)/\(targets.count)"
+                arcadeStatus = "Updating media… \(done)/\(targets.count)"
             }
         }
     }
@@ -518,19 +545,6 @@ final class Library: ObservableObject {
             favorites.subtract(ids)
         }
         FavoritesStore.save(favorites)
-    }
-
-    /// Clear cached media for the selected entries, then re-run the
-    /// resolution chain (loose → archive → online) on the next tile
-    /// render. Triggered from the "Regenerate Media" context action.
-    func regenerateMedia(ids: Set<Entry.ID>, in system: SystemNode) async {
-        let targets = entries(for: system, hideMissing: false).filter { ids.contains($0.id) }
-        for entry in targets {
-            await MediaProvider.shared.invalidate(entry: entry)
-        }
-        // Bump the generation token so EntryTile `.task` IDs change and
-        // the tiles re-run their media resolution.
-        mediaGeneration &+= 1
     }
 
     /// Kick off a one-time bulk extraction for `kind` if archives exist on
