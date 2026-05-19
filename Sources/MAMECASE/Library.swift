@@ -169,14 +169,6 @@ final class Library: ObservableObject {
                 await self?.indexArcade()
             }
 
-            // Background verification of every owned ROM. Cache hits are
-            // instant; only entries whose ROM file changed (or were
-            // never verified) actually spawn a MAME audit, so this is
-            // cheap on a warm cache. Runs concurrently with the arcade
-            // index refresh above.
-            Task { [weak self] in
-                await self?.verifyAll()
-            }
             // Brew-manage check + update probe runs in the background; the
             // gear-button badge picks it up via @Published.
             mameBrewManaged = BrewInstaller.isMameBrewManaged()
@@ -189,12 +181,15 @@ final class Library: ObservableObject {
                 mameUpdateAvailable = false
             }
 
-            // Probe the executable for its version banner. Runs once per
-            // load; result feeds the badge in Settings → General.
+            // Probe the MAME version banner, then kick off background
+            // verification. The version is part of the verification
+            // cache key — without it freshStatus rejects every record
+            // and we'd re-audit the whole library on every launch.
             let exe = cfg.executable
             Task { [weak self] in
                 let v = await BrewInstaller.mameVersion(executable: exe)
                 await MainActor.run { self?.mameVersion = v }
+                await self?.verifyAll()
             }
         } catch MameConfigError.executableNotFound {
             self.mameMissing = true
@@ -639,7 +634,8 @@ final class Library: ObservableObject {
         verifications[entry.id] = status
         verificationCache[entry.id] = VerificationCache.makeRecord(status: status,
                                                                    for: entry,
-                                                                   romPaths: cfg.romPaths)
+                                                                   romPaths: cfg.romPaths,
+                                                                   mameVersion: mameVersion)
         VerificationCache.save(verificationCache)
     }
 
@@ -674,13 +670,19 @@ final class Library: ObservableObject {
         }
         let total = all.count
 
-        // First pass: apply cache hits, collect misses.
+        // First pass: apply cache hits, collect misses. A nil
+        // `mameVersion` causes `freshStatus` to reject every record,
+        // which would defeat the cache entirely — so we abort early
+        // and rely on `load()` re-calling us after the version probe
+        // lands.
+        guard let currentMameVersion = mameVersion else { return }
         var pending: [Entry] = []
         pending.reserveCapacity(total)
         for entry in all {
             if let cached = VerificationCache.freshStatus(for: entry,
                                                           romPaths: cfg.romPaths,
-                                                          cache: verificationCache) {
+                                                          cache: verificationCache,
+                                                          mameVersion: currentMameVersion) {
                 verifications[entry.id] = cached
             } else {
                 pending.append(entry)
@@ -715,7 +717,8 @@ final class Library: ObservableObject {
                 verifications[entry.id] = status
                 verificationCache[entry.id] = VerificationCache.makeRecord(status: status,
                                                                            for: entry,
-                                                                           romPaths: romPaths)
+                                                                           romPaths: romPaths,
+                                                                           mameVersion: currentMameVersion)
                 done += 1
                 if done % 25 == 0 || done == total {
                     arcadeStatus = "Verifying ROMs… \(done)/\(total)"

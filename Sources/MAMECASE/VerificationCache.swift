@@ -3,17 +3,26 @@ import Foundation
 /// On-disk cache of `mame -verifyroms` results so we don't re-audit ROMs
 /// whose underlying file hasn't changed.
 ///
-/// Cache key: `Entry.ID`. Validity is derived from the ROM zip's size +
-/// modification time at the time of verification — so a replaced or
-/// re-downloaded zip automatically invalidates the prior result.
+/// Cache key: `Entry.ID`. Validity has two axes:
+///   - ROM file size + mtime — a replaced / re-downloaded zip invalidates
+///     the prior result.
+///   - MAME version banner — MAME bumps its hash database between
+///     releases, so a stored "good" verdict from MAME 0.260 isn't
+///     trustworthy under MAME 0.275. Any version drift invalidates the
+///     entire record.
 ///
-/// `notFound` records are kept valid as long as the file remains absent,
-/// which prevents repeatedly re-checking ROMs the user doesn't own.
+/// `notFound` records are kept valid as long as the file remains absent
+/// AND the MAME version still matches, which prevents repeatedly
+/// re-checking ROMs the user doesn't own.
 enum VerificationCache {
     struct Record: Codable {
         let status: RomStatus
         let size: UInt64
         let mtime: TimeInterval
+        /// MAME banner at the moment of verification (first line of
+        /// `mame -help`). Optional for back-compat — old records without
+        /// a version are treated as stale and re-verified once.
+        var mameVersion: String?
     }
 
     private static let fileName = "verifications.json"
@@ -39,21 +48,40 @@ enum VerificationCache {
     }
 
     /// Build a fresh record from the current state of the ROM file.
-    static func makeRecord(status: RomStatus, for entry: Entry, romPaths: [URL]) -> Record {
+    /// `mameVersion` should be the current `mame -help` banner, written
+    /// into the record so a future MAME upgrade invalidates the verdict.
+    static func makeRecord(status: RomStatus,
+                           for entry: Entry,
+                           romPaths: [URL],
+                           mameVersion: String?) -> Record {
         if let url = romFile(for: entry, in: romPaths),
            let meta = fileMetadata(url) {
-            return Record(status: status, size: meta.size, mtime: meta.mtime)
+            return Record(status: status,
+                          size: meta.size,
+                          mtime: meta.mtime,
+                          mameVersion: mameVersion)
         }
-        return Record(status: status, size: 0, mtime: 0)
+        return Record(status: status, size: 0, mtime: 0, mameVersion: mameVersion)
     }
 
     /// Returns the cached status iff it's still valid:
+    ///   - Record's `mameVersion` must match the current MAME banner.
+    ///     A nil current version (probe not done yet) refuses to accept
+    ///     ANY cache entries — better to defer than to use stale data.
     ///   - `notFound` records: valid while the file is still absent.
     ///   - all others: file must exist with matching size + mtime.
     static func freshStatus(for entry: Entry,
                             romPaths: [URL],
-                            cache: [Entry.ID: Record]) -> RomStatus? {
+                            cache: [Entry.ID: Record],
+                            mameVersion: String?) -> RomStatus? {
         guard let record = cache[entry.id] else { return nil }
+        // Version match is mandatory. Old records without a recorded
+        // version are treated as stale so they re-verify exactly once
+        // under the new versioned scheme.
+        guard let current = mameVersion,
+              let recorded = record.mameVersion,
+              recorded == current
+        else { return nil }
         let url = romFile(for: entry, in: romPaths)
         if record.status == .notFound {
             return url == nil ? .notFound : nil
