@@ -425,6 +425,33 @@ final class Library: ObservableObject {
 
     // MARK: - Favorites
 
+    // MARK: - Deleting ROMs
+
+    /// Delete the on-disk ROM file (zip / 7z / chd) for every entry in
+    /// `ids`. Returns the count actually removed. Caller is expected to
+    /// confirm with the user first — this is destructive.
+    @discardableResult
+    func deleteROMs(ids: Set<Entry.ID>, in system: SystemNode) -> Int {
+        guard let cfg = config else { return 0 }
+        let targets = entries(for: system, hideMissing: false).filter { ids.contains($0.id) }
+        let fm = FileManager.default
+        var removed = 0
+        for entry in targets {
+            if let url = VerificationCache.romFile(for: entry, in: cfg.romPaths) {
+                if (try? fm.removeItem(at: url)) != nil {
+                    removed += 1
+                    verifications.removeValue(forKey: entry.id)
+                }
+            }
+        }
+        if removed > 0 {
+            rebuildPresence()
+            tagSoftwareOwnership()
+            tagArcadeOwnership()
+        }
+        return removed
+    }
+
     // MARK: - Playlists
 
     @discardableResult

@@ -169,21 +169,45 @@ actor LibretroThumbnails {
 
     // MARK: - Name matching
 
-    /// 1. Case-insensitive exact match against the full display name.
-    /// 2. Case-insensitive match after stripping every `(…)` / `[…]` group
-    ///    from both sides — covers the `(Euro, USA)` ↔ `(USA, Europe)`
-    ///    divergence.
-    /// 3. Otherwise nil.
+    /// Match strategy, in order:
+    ///   1. Case-insensitive exact match on the full display name.
+    ///   2. Match after stripping `(…)` / `[…]` tags and normalising the
+    ///      "The X" ↔ "X, The" article convention (libretro / No-Intro
+    ///      files articles trailing, MAME's hash XMLs put them leading).
+    ///   3. Otherwise nil.
     private func matchName(displayName: String, in names: [String]) -> String? {
         let displayLower = displayName.lowercased()
         if let exact = names.first(where: { $0.lowercased() == displayLower }) {
             return exact
         }
-        let displayStripped = LibretroThumbnails.stripTags(displayName).lowercased()
-        guard !displayStripped.isEmpty else { return nil }
-        return names.first(where: {
-            LibretroThumbnails.stripTags($0).lowercased() == displayStripped
-        })
+        let target = LibretroThumbnails.normalize(displayName)
+        guard !target.isEmpty else { return nil }
+        return names.first(where: { LibretroThumbnails.normalize($0) == target })
+    }
+
+    /// Strip `(…)` / `[…]` tag groups, lowercase, fold whitespace, and
+    /// normalise the leading/trailing article so e.g.
+    ///   "The Goonies II (Euro)"        ↔ "goonies ii"
+    ///   "Goonies II, The (Europe)"     ↔ "goonies ii"
+    /// fall onto the same key.
+    private static func normalize(_ s: String) -> String {
+        let stripped = stripTags(s).lowercased()
+        var n = stripped
+        for article in ["the ", "a ", "an "] {
+            if n.hasPrefix(article) {
+                n = String(n.dropFirst(article.count))
+                break
+            }
+        }
+        for suffix in [", the", ", a", ", an"] {
+            if n.hasSuffix(suffix) {
+                n = String(n.dropLast(suffix.count))
+                break
+            }
+        }
+        return n
+            .replacingOccurrences(of: "  ", with: " ")
+            .trimmingCharacters(in: .whitespaces)
     }
 
     private static func stripTags(_ s: String) -> String {

@@ -15,6 +15,7 @@ struct GalleryView: View {
     @AppStorage("gridItemSize") private var gridItemSize: Double = 180
     @State private var anchor: Entry.ID?
     @State private var pendingDownload: PendingDownload?
+    @State private var pendingDelete: PendingDelete?
     @State private var tileFrames: [Entry.ID: CGRect] = [:]
     @State private var marqueeStart: CGPoint?
     @State private var marqueeCurrent: CGPoint?
@@ -102,6 +103,26 @@ struct GalleryView: View {
                 ContentUnavailableView("No entries",
                                        systemImage: "tray",
                                        description: Text(emptyHint))
+            }
+        }
+        .alert("Delete ROMs?",
+               isPresented: Binding(get: { pendingDelete != nil },
+                                    set: { if !$0 { pendingDelete = nil } })) {
+            Button("Cancel", role: .cancel) { pendingDelete = nil }
+            Button("Delete", role: .destructive) {
+                let targets = pendingDelete?.targets ?? []
+                pendingDelete = nil
+                let ids = Set(targets.map(\.id))
+                _ = library.deleteROMs(ids: ids, in: system)
+                selection.subtract(ids)
+            }
+        } message: {
+            if let p = pendingDelete {
+                if p.targets.count == 1 {
+                    Text("Permanently delete \(p.targets[0].shortName)?")
+                } else {
+                    Text("Permanently delete \(p.targets.count) ROMs?")
+                }
             }
         }
         .alert("Overwrite existing ROMs?",
@@ -303,6 +324,15 @@ struct GalleryView: View {
             }
         }
         .disabled(library.config == nil)
+        Button(deleteMenuTitle(for: entry), role: .destructive) {
+            let targets = library
+                .entries(for: system, hideMissing: false)
+                .filter { batchIDs(triggeredBy: entry).contains($0.id) }
+                .filter(\.owned)
+            guard !targets.isEmpty else { return }
+            pendingDelete = PendingDelete(targets: targets)
+        }
+        .disabled(library.config == nil)
         if !isMultiSelected(entry) {
             Divider()
             if let snap = library.mediaURL(for: entry, kind: .snap) {
@@ -347,6 +377,13 @@ struct GalleryView: View {
     private func downloadMediaMenuTitle(for entry: Entry) -> String {
         let count = (selection.contains(entry.id) && selection.count > 1) ? selection.count : 1
         return count > 1 ? "Download Media for \(count) Entries" : "Download Media"
+    }
+
+    /// "Delete ROM" / "Delete N ROMs". Always destructive — only enabled
+    /// when at least one target actually has a file on disk.
+    private func deleteMenuTitle(for entry: Entry) -> String {
+        let count = (selection.contains(entry.id) && selection.count > 1) ? selection.count : 1
+        return count > 1 ? "Delete \(count) ROMs" : "Delete ROM"
     }
 
     /// IDs the context-menu batch action should target: the multi-selection
@@ -558,6 +595,11 @@ private struct ArtworkSizing: ViewModifier {
 struct PendingDownload {
     let targets: [Entry]
     let existing: [Entry]
+}
+
+/// Tracks a pending destructive ROM delete awaiting user confirmation.
+struct PendingDelete {
+    let targets: [Entry]
 }
 
 /// Carries the gallery ScrollView's content width up to the GalleryView
