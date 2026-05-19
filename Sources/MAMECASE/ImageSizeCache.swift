@@ -17,12 +17,14 @@ final class ImageSizeCache: ObservableObject {
 
     private var sizes: [URL: CGSize] = [:]
     private var pending: Set<URL> = []
+    private var failed: Set<URL> = []
     @Published private(set) var generation: Int = 0
 
     /// Returns a cached size if available. If the URL hasn't been
     /// inspected yet, schedules a load and returns nil.
     func size(for url: URL) -> CGSize? {
         if let s = sizes[url] { return s }
+        if failed.contains(url) { return nil }
         if !pending.contains(url) {
             pending.insert(url)
             Task.detached(priority: .utility) { [weak self] in
@@ -33,12 +35,22 @@ final class ImageSizeCache: ObservableObject {
         return nil
     }
 
+    /// Distinguishes "we tried to measure and got nothing" from "we
+    /// haven't tried yet". The gallery uses this to pick a square
+    /// placeholder for broken / zero-byte images, instead of inheriting
+    /// the per-system portrait fallback.
+    func didFail(_ url: URL) -> Bool {
+        failed.contains(url)
+    }
+
     private func complete(url: URL, size: CGSize?) {
         pending.remove(url)
         if let size, size.width > 0, size.height > 0 {
             sizes[url] = size
-            generation &+= 1
+        } else {
+            failed.insert(url)
         }
+        generation &+= 1
     }
 
     /// Reads only the image's header for the natural pixel dimensions

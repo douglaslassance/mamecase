@@ -206,16 +206,18 @@ struct GalleryView: View {
     /// Per-entry aspect ratio (width / height) used by masonry layouts.
     /// Resolution order:
     ///   1. real natural ratio from `ImageSizeCache` (loaded asynchronously)
-    ///   2. per-system convention if the entry has a media URL but the
-    ///      size hasn't streamed in yet
-    ///   3. square (1.0) when no media is available at all — the
-    ///      gamepad placeholder should always render in a uniform box.
+    ///   2. square (1.0) when there's no media URL at all, or when we
+    ///      tried to measure one and failed (corrupt / zero-byte file) —
+    ///      the gamepad placeholder should always render in a uniform
+    ///      box rather than inherit a portrait per-system shape.
+    ///   3. per-system convention while we wait for the size to stream in.
     private func artworkAspect(for entry: Entry) -> CGFloat {
         let url = library.mediaURL(for: entry, kind: entryMediaPreference)
-        if let url, let size = imageSizes.size(for: url), size.height > 0 {
+        guard let url else { return 1.0 }
+        if let size = imageSizes.size(for: url), size.height > 0 {
             return size.width / size.height
         }
-        guard url != nil else { return 1.0 }
+        if imageSizes.didFail(url) { return 1.0 }
         switch entry.kind {
         case .arcade: return SnapAspectRatio.ratio(for: entry)
         case .software:
