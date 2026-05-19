@@ -23,6 +23,11 @@ enum VerificationCache {
         /// `mame -help`). Optional for back-compat — old records without
         /// a version are treated as stale and re-verified once.
         var mameVersion: String?
+        /// Short human summary pulled from the audit output (e.g.
+        /// "ROM xxx: BAD CRC"). Surfaced in the tile tooltip. Nil when
+        /// the status is .good / .notFound or MAME printed nothing
+        /// actionable.
+        var details: String?
     }
 
     private static let fileName = "verifications.json"
@@ -51,6 +56,7 @@ enum VerificationCache {
     /// `mameVersion` should be the current `mame -help` banner, written
     /// into the record so a future MAME upgrade invalidates the verdict.
     static func makeRecord(status: RomStatus,
+                           details: String?,
                            for entry: Entry,
                            romPaths: [URL],
                            mameVersion: String?) -> Record {
@@ -59,9 +65,14 @@ enum VerificationCache {
             return Record(status: status,
                           size: meta.size,
                           mtime: meta.mtime,
-                          mameVersion: mameVersion)
+                          mameVersion: mameVersion,
+                          details: details)
         }
-        return Record(status: status, size: 0, mtime: 0, mameVersion: mameVersion)
+        return Record(status: status,
+                      size: 0,
+                      mtime: 0,
+                      mameVersion: mameVersion,
+                      details: details)
     }
 
     /// Returns the cached status iff it's still valid:

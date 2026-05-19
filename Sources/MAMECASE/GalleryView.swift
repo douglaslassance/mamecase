@@ -234,6 +234,7 @@ struct GalleryView: View {
     private func tileView(for entry: Entry, fixedSize: CGSize?) -> some View {
         EntryTile(entry: entry,
                   status: library.verifications[entry.id],
+                  statusDetails: library.verificationDetails[entry.id],
                   verifying: library.verifyingIDs.contains(entry.id),
                   selected: selection.contains(entry.id),
                   favorite: library.favorites.contains(entry.id),
@@ -645,6 +646,10 @@ private struct EntryTile: View {
     @EnvironmentObject var library: Library
     let entry: Entry
     let status: RomStatus?
+    /// Optional one-or-two-line explanation drawn from MAME's audit
+    /// output ("ROM xxx: BAD CRC", "missing files", …) — appended to
+    /// the badge tooltip when present.
+    var statusDetails: String?
     let verifying: Bool
     let selected: Bool
     let favorite: Bool
@@ -714,7 +719,7 @@ private struct EntryTile: View {
                             .background(.thinMaterial, in: Circle())
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                             .padding(6)
-                            .help("ROM status: \(status.label)")
+                            .help(verificationHelp(status: status))
                     }
                 }
                 .frame(width: geo.size.width, height: geo.size.height)
@@ -813,6 +818,16 @@ private struct EntryTile: View {
         case .arcade: return "Arcade"
         case .software(let sys): return library.softwareListDisplayName(for: sys) ?? sys
         }
+    }
+
+    /// Combines the audit verdict with MAME's own "what went wrong"
+    /// summary. Falls back to "ROM status: <label>" when there's no
+    /// detail string (e.g. status .good, or an older record from
+    /// before we captured details).
+    private func verificationHelp(status: RomStatus) -> String {
+        let head = "ROM status: \(status.label)"
+        guard let d = statusDetails, !d.isEmpty else { return head }
+        return "\(head)\n\(d)"
     }
 
     /// Aspect ratio for the artwork tile, picked per-kind and per-system

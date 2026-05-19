@@ -29,6 +29,9 @@ final class Library: ObservableObject {
     @Published var controllerSchemes: [String] = []
     @Published var shaderSchemes: [String] = []
     @Published var verifications: [Entry.ID: RomStatus] = [:]
+    /// Per-entry tooltip detail string captured from the audit output
+    /// (e.g. "ROM xxx: BAD CRC"). Populated alongside `verifications`.
+    @Published var verificationDetails: [Entry.ID: String] = [:]
     @Published var verifyingIDs: Set<Entry.ID> = []
     @Published var favorites: Set<Entry.ID> = FavoritesStore.load()
     /// Entry IDs in launch order, most recent first. Populated by
@@ -143,9 +146,15 @@ final class Library: ObservableObject {
             // Hydrate verification cache so tile badges appear immediately
             // for ROMs we verified in a previous session.
             self.verificationCache = VerificationCache.load()
+            var statusMap: [Entry.ID: RomStatus] = [:]
+            var detailMap: [Entry.ID: String] = [:]
+            statusMap.reserveCapacity(verificationCache.count)
             for (id, record) in verificationCache {
-                self.verifications[id] = record.status
+                statusMap[id] = record.status
+                if let d = record.details { detailMap[id] = d }
             }
+            self.verifications = statusMap
+            self.verificationDetails = detailMap
 
             // Hydrate arcade entries from disk cache so the gallery is usable
             // immediately. The fresh `mame -listfull` re-index runs in the
@@ -628,11 +637,17 @@ final class Library: ObservableObject {
         guard let cfg = config else { return }
         verifyingIDs.insert(entry.id)
         defer { verifyingIDs.remove(entry.id) }
-        let status = await RomVerifier.verify(entry: entry,
+        let result = await RomVerifier.verify(entry: entry,
                                               executable: cfg.executable,
                                               romPaths: cfg.romPaths)
-        verifications[entry.id] = status
-        verificationCache[entry.id] = VerificationCache.makeRecord(status: status,
+        verifications[entry.id] = result.status
+        if let d = result.details {
+            verificationDetails[entry.id] = d
+        } else {
+            verificationDetails.removeValue(forKey: entry.id)
+        }
+        verificationCache[entry.id] = VerificationCache.makeRecord(status: result.status,
+                                                                   details: result.details,
                                                                    for: entry,
                                                                    romPaths: cfg.romPaths,
                                                                    mameVersion: mameVersion)
@@ -676,6 +691,13 @@ final class Library: ObservableObject {
         // and rely on `load()` re-calling us after the version probe
         // lands.
         guard let currentMameVersion = mameVersion else { return }
+
+        // Build the cache-hit map locally and publish ONCE. The old
+        // implementation wrote `verifications[entry.id] = cached`
+        // inside the loop, triggering an objectWillChange per entry —
+        // 9k publishes on a typical library, each forcing the whole
+        // gallery to re-render. That's the perf cliff the user hit.
+        var statusUpdates = verifications
         var pending: [Entry] = []
         pending.reserveCapacity(total)
         for entry in all {
@@ -683,11 +705,12 @@ final class Library: ObservableObject {
                                                           romPaths: cfg.romPaths,
                                                           cache: verificationCache,
                                                           mameVersion: currentMameVersion) {
-                verifications[entry.id] = cached
+                statusUpdates[entry.id] = cached
             } else {
                 pending.append(entry)
             }
         }
+        verifications = statusUpdates
 
         var done = total - pending.count
         arcadeStatus = "Verifying ROMs… \(done)/\(total)"
@@ -695,46 +718,75 @@ final class Library: ObservableObject {
 
         let exe = cfg.executable
         let romPaths = cfg.romPaths
-        let cap = 4
+        // Lower concurrency for the background pass. Two parallel
+        // `mame -verifyroms` processes is plenty — they're disk-bound
+        // and we don't want the audit to fight the UI for CPU.
+        let cap = 2
+        // Flush updates to @Published storage every N completions so
+        // the gallery re-renders ~periodically instead of per-entry.
+        let flushEvery = 50
 
-        await withTaskGroup(of: (Entry, RomStatus).self) { group in
+        await withTaskGroup(of: (Entry, RomVerifier.Result).self) { group in
             var next = 0
             // Seed initial batch.
             while next < min(cap, pending.count) {
                 let entry = pending[next]
                 verifyingIDs.insert(entry.id)
                 group.addTask {
-                    let status = await RomVerifier.verify(entry: entry,
+                    let result = await RomVerifier.verify(entry: entry,
                                                           executable: exe,
                                                           romPaths: romPaths)
-                    return (entry, status)
+                    return (entry, result)
                 }
                 next += 1
             }
+
+            // Accumulate results locally; flush in chunks.
+            var pendingStatus: [Entry.ID: RomStatus] = [:]
+            var pendingDetails: [Entry.ID: String?] = [:]
+            var sinceFlush = 0
+
+            @MainActor func flush() {
+                guard !pendingStatus.isEmpty else { return }
+                verifications.merge(pendingStatus, uniquingKeysWith: { _, new in new })
+                for (id, value) in pendingDetails {
+                    if let v = value { verificationDetails[id] = v }
+                    else { verificationDetails.removeValue(forKey: id) }
+                }
+                pendingStatus.removeAll(keepingCapacity: true)
+                pendingDetails.removeAll(keepingCapacity: true)
+                sinceFlush = 0
+            }
+
             // Drain + refill.
-            while let (entry, status) = await group.next() {
+            while let (entry, result) = await group.next() {
                 verifyingIDs.remove(entry.id)
-                verifications[entry.id] = status
-                verificationCache[entry.id] = VerificationCache.makeRecord(status: status,
+                pendingStatus[entry.id] = result.status
+                pendingDetails[entry.id] = result.details
+                verificationCache[entry.id] = VerificationCache.makeRecord(status: result.status,
+                                                                           details: result.details,
                                                                            for: entry,
                                                                            romPaths: romPaths,
                                                                            mameVersion: currentMameVersion)
                 done += 1
-                if done % 25 == 0 || done == total {
+                sinceFlush += 1
+                if sinceFlush >= flushEvery || done == total {
+                    flush()
                     arcadeStatus = "Verifying ROMs… \(done)/\(total)"
                 }
                 if next < pending.count {
                     let nextEntry = pending[next]
                     verifyingIDs.insert(nextEntry.id)
                     group.addTask {
-                        let status = await RomVerifier.verify(entry: nextEntry,
-                                                              executable: exe,
-                                                              romPaths: romPaths)
-                        return (nextEntry, status)
+                        let r = await RomVerifier.verify(entry: nextEntry,
+                                                         executable: exe,
+                                                         romPaths: romPaths)
+                        return (nextEntry, r)
                     }
                     next += 1
                 }
             }
+            flush()
         }
         VerificationCache.save(verificationCache)
     }

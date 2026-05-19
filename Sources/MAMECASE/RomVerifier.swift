@@ -9,10 +9,20 @@ import Foundation
 ///   `romset xxx is best available`
 ///   `romset xxx not found`
 enum RomVerifier {
-    static func verify(entry: Entry, executable: String, romPaths: [URL]) async -> RomStatus {
+    /// Result of one MAME audit pass: a parsed status plus a short
+    /// human-readable explanation drawn from the audit output, suitable
+    /// for tooltips. Nil when there's nothing useful to add (e.g. status
+    /// is good, or MAME ran but printed only its banner).
+    struct Result {
+        let status: RomStatus
+        let details: String?
+    }
+
+    static func verify(entry: Entry, executable: String, romPaths: [URL]) async -> Result {
         let args = arguments(for: entry, romPaths: romPaths)
         let output = await runCapturing(executable: executable, args: args)
-        return parse(output)
+        let status = parse(output)
+        return Result(status: status, details: extractDetails(output, status: status))
     }
 
     // MARK: - Arguments
@@ -45,11 +55,44 @@ enum RomVerifier {
         return .error
     }
 
+    /// Pulls the audit's "what went wrong" lines out of MAME's output:
+    /// per-ROM CRC mismatches, missing files, parent-set warnings. Drops
+    /// the leading banner / `Using…` / `Total time` chatter that's noise
+    /// for a tooltip. Caps to 3 lines and ~240 chars so the tooltip
+    /// stays readable.
+    private static func extractDetails(_ output: String, status: RomStatus) -> String? {
+        guard status != .good, status != .notFound else { return nil }
+        let interesting: [String] = output
+            .split(whereSeparator: { $0.isNewline })
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
+            .filter { line in
+                let l = line.lowercased()
+                guard !l.isEmpty else { return false }
+                if l.hasPrefix("mame ") || l.hasPrefix("using ") { return false }
+                if l.hasPrefix("romset ") && (l.contains(" is ") || l.contains(" not found")) {
+                    // Drop the "romset X is bad" summary — its info is
+                    // already conveyed by the status enum/badge.
+                    return false
+                }
+                return l.contains("rom ") || l.contains("crc") || l.contains("missing")
+                    || l.contains("not found") || l.contains("bad") || l.contains("warn")
+            }
+        guard !interesting.isEmpty else { return nil }
+        let joined = interesting.prefix(3).joined(separator: "\n")
+        if joined.count > 240 {
+            return String(joined.prefix(240)) + "…"
+        }
+        return joined
+    }
+
     // MARK: - Process
 
     private static func runCapturing(executable: String, args: [String]) async -> String {
         await withCheckedContinuation { (continuation: CheckedContinuation<String, Never>) in
-            DispatchQueue.global(qos: .userInitiated).async {
+            // `.utility` so a background `verifyAll()` pass doesn't
+            // contend with UI work. The user can still launch / scroll
+            // / search while the audit walks the library.
+            DispatchQueue.global(qos: .utility).async {
                 let p = Process()
                 p.executableURL = URL(fileURLWithPath: executable)
                 p.arguments = args
