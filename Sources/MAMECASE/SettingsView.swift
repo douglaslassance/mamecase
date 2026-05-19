@@ -190,22 +190,23 @@ private struct GeneralSettingsTab: View {
                     HStack(spacing: 8) {
                         TextField("",
                                   text: $settings.romDownloadBaseURL,
-                                  prompt: Text(AppSettingsDefaults.romDownloadBaseURL))
+                                  prompt: Text("https://example.org/path/"))
                             .textFieldStyle(.roundedBorder)
                             .multilineTextAlignment(.leading)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Button("Open") {
-                            let raw = settings.romDownloadBaseURL.isEmpty
-                                ? AppSettingsDefaults.romDownloadBaseURL
-                                : settings.romDownloadBaseURL
+                            let raw = settings.romDownloadBaseURL
+                                .trimmingCharacters(in: .whitespaces)
                             if let url = URL(string: raw) { NSWorkspace.shared.open(url) }
                         }
+                        .disabled(settings.romDownloadBaseURL
+                            .trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                 }
             } header: {
                 Text("ROM downloads")
             } footer: {
-                Text("Mamecase appends `<shortname>.zip` to this URL when downloading a ROM. Leave blank to use the archive.org default.")
+                Text("Mamecase appends `<shortname>.zip` to this URL when downloading a ROM. Leave blank to hide the Download ROM action — Mamecase doesn't ship a default source.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

@@ -833,9 +833,12 @@ final class Library: ObservableObject {
         let arcade = targets.filter { if case .arcade = $0.kind { true } else { false } }
         let baseURL: String = {
             let stored = UserDefaults.standard.string(forKey: "romDownloadBaseURL") ?? ""
-            let trimmed = stored.trimmingCharacters(in: .whitespaces)
-            return trimmed.isEmpty ? AppSettingsDefaults.romDownloadBaseURL : trimmed
+            return stored.trimmingCharacters(in: .whitespaces)
         }()
+        // No source configured → refuse silently. The context-menu
+        // gates the action on the same condition, so reaching here with
+        // an empty URL means a stale invocation from elsewhere.
+        guard !baseURL.isEmpty else { return }
         var succeeded: [Entry] = []
         for entry in arcade {
             guard let dest = downloadDestination(for: entry) else { continue }

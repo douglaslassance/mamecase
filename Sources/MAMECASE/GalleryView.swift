@@ -3,6 +3,7 @@ import AppKit
 
 struct GalleryView: View {
     @EnvironmentObject var library: Library
+    @EnvironmentObject var settings: AppSettings
     @ObservedObject private var imageSizes = ImageSizeCache.shared
     let system: SystemNode
     let hideMissing: Bool
@@ -348,7 +349,11 @@ struct GalleryView: View {
         Divider()
 
         // Group 3: media + ROM downloads.
-        if case .arcade = entry.kind {
+        // "Download ROM" is hidden when no Base URL is configured — we
+        // ship that field blank so Mamecase isn't a one-click piracy
+        // frontend out of the box. The user has to opt in by pasting
+        // their own source in Settings → ROM downloads.
+        if case .arcade = entry.kind, romDownloadConfigured {
             Button {
                 startDownload(triggeredBy: entry)
             } label: { Label(downloadMenuTitle(for: entry), systemImage: "arrow.down.circle") }
@@ -488,6 +493,15 @@ struct GalleryView: View {
     private func isArcade(_ entry: Entry) -> Bool {
         if case .arcade = entry.kind { return true }
         return false
+    }
+
+    /// True when the user has configured a ROM download source. Mamecase
+    /// ships with this blank by design (see `AppSettingsDefaults`), so
+    /// the context-menu Download action is opt-in.
+    private var romDownloadConfigured: Bool {
+        !settings.romDownloadBaseURL
+            .trimmingCharacters(in: .whitespaces)
+            .isEmpty
     }
 
     private func startDownload(triggeredBy entry: Entry) {

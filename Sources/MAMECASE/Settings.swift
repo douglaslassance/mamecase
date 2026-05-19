@@ -59,10 +59,17 @@ final class AppSettings: ObservableObject {
 
 /// Default values, kept outside the MainActor-isolated class so they can be
 /// referenced from any context (e.g. the loader).
+///
+/// Note: we deliberately ship `romDownloadBaseURL` as empty. The user must
+/// supply their own source — Mamecase doesn't endorse any particular site
+/// (and a one-click piracy frontend would be a problem for distribution).
+/// For reference, the archive.org `mame-merged` collection follows the
+/// `<shortname>.zip` filename convention this code expects:
+///   https://archive.org/download/mame-merged/
 enum AppSettingsDefaults {
     static let mameHomePath = "~/.mame"
     static let mameExecutablePath = "mame"
-    static let romDownloadBaseURL = "https://archive.org/download/mame-merged/"
+    static let romDownloadBaseURL = ""
 }
 
 /// Immutable value-type copy of Settings for use off the main actor.
@@ -85,9 +92,10 @@ struct SettingsSnapshot {
         return trimmed.isEmpty ? AppSettingsDefaults.mameExecutablePath : trimmed
     }
 
+    /// Trimmed user-supplied URL, or empty when not set. There is no
+    /// fallback — an empty URL means "ROM downloads disabled".
     var effectiveRomDownloadBaseURL: String {
-        let trimmed = romDownloadBaseURL.trimmingCharacters(in: .whitespaces)
-        return trimmed.isEmpty ? AppSettingsDefaults.romDownloadBaseURL : trimmed
+        romDownloadBaseURL.trimmingCharacters(in: .whitespaces)
     }
 
     var resolvedMameHome: URL {
