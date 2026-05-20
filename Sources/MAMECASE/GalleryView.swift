@@ -300,9 +300,11 @@ struct GalleryView: View {
     @ViewBuilder
     private func tileBadge(for entry: Entry) -> some View {
         if library.verifyingIDs.contains(entry.id) {
+            // Match VerificationBadge's chrome (4pt padding + thinMaterial
+            // circle) so the spinner-to-badge swap doesn't visibly resize.
             ProgressView()
                 .controlSize(.small)
-                .padding(6)
+                .padding(4)
                 .background(.thinMaterial, in: Circle())
         } else if let status = library.verifications[entry.id], status.isFailing {
             VerificationBadge(status: status,
@@ -431,33 +433,27 @@ struct GalleryView: View {
     }
 
     private func verifyMenuTitle(for entry: Entry) -> String {
-        let count = (selection.contains(entry.id) && selection.count > 1) ? selection.count : 1
-        return count > 1 ? "Verify \(count) ROMs" : "Verify ROM"
+        isMultiSelected(entry) ? "Verify ROMs" : "Verify ROM"
     }
 
-    /// "Rescan ROM File" / "Rescan N ROM Files". Re-checks just the
-    /// targeted entries against the filesystem, flipping their owned
-    /// flag if a file appeared or vanished since the last index pass.
+    /// Singular vs plural label for the "Rescan ROM File(s)" entry.
     private func rescanMenuTitle(for entry: Entry) -> String {
-        let count = (selection.contains(entry.id) && selection.count > 1) ? selection.count : 1
-        return count > 1 ? "Rescan \(count) ROM Files" : "Rescan ROM File"
+        isMultiSelected(entry) ? "Rescan ROM Files" : "Rescan ROM File"
     }
 
     private func downloadMenuTitle(for entry: Entry) -> String {
-        let targets = downloadTargets(triggeredBy: entry)
-        return targets.count > 1 ? "Download \(targets.count) ROMs" : "Download ROM"
+        downloadTargets(triggeredBy: entry).count > 1 ? "Download ROMs" : "Download ROM"
     }
 
+    /// "Update Media" — same label in singular and plural, no count.
     private func updateMediaMenuTitle(for entry: Entry) -> String {
-        let count = (selection.contains(entry.id) && selection.count > 1) ? selection.count : 1
-        return count > 1 ? "Update Media for \(count) Entries" : "Update Media"
+        "Update Media"
     }
 
-    /// "Delete ROM" / "Delete N ROMs". Always destructive — only enabled
+    /// "Delete ROM" / "Delete ROMs". Always destructive — only enabled
     /// when at least one target actually has a file on disk.
     private func deleteMenuTitle(for entry: Entry) -> String {
-        let count = (selection.contains(entry.id) && selection.count > 1) ? selection.count : 1
-        return count > 1 ? "Delete \(count) ROMs" : "Delete ROM"
+        isMultiSelected(entry) ? "Delete ROMs" : "Delete ROM"
     }
 
     /// IDs the context-menu batch action should target: the multi-selection
@@ -473,11 +469,7 @@ struct GalleryView: View {
     private func favoriteMenuTitle(for entry: Entry) -> String {
         let targets = batchTargets(triggeredBy: entry)
         let allFavorited = targets.allSatisfy { library.favorites.contains($0.id) }
-        let n = targets.count
-        if n > 1 {
-            return allFavorited ? "Remove \(n) from Favorites" : "Add \(n) to Favorites"
-        }
-        return library.favorites.contains(entry.id) ? "Remove from Favorites" : "Add to Favorites"
+        return allFavorited ? "Remove from Favorites" : "Add to Favorites"
     }
 
     private func toggleFavorite(triggeredBy entry: Entry) {
