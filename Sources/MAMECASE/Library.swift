@@ -301,6 +301,60 @@ final class Library: ObservableObject {
         tagArcadeOwnership()
     }
 
+    /// Recheck on-disk presence for just these IDs. Targeted version
+    /// of `rescanPresence()`, intended for the context-menu "Rescan
+    /// ROM File" action — flips owned flags for the selection without
+    /// re-walking the whole rompath. Also updates `presence` so a
+    /// later `tagOwnership()` pass doesn't undo the change.
+    func rescanPresence(ids: Set<Entry.ID>, in system: SystemNode) {
+        guard let cfg = config else { return }
+        let romPaths = cfg.romPaths
+        let targets = entries(for: system, hideMissing: false).filter { ids.contains($0.id) }
+        guard !targets.isEmpty else { return }
+
+        // Decide each target's new owned state from disk, then apply
+        // to both the entry list and the presence index in one pass.
+        var ownedFlips: [Entry.ID: Bool] = [:]
+        for entry in targets {
+            ownedFlips[entry.id] =
+                VerificationCache.romFile(for: entry, in: romPaths) != nil
+        }
+
+        arcadeEntries = arcadeEntries.map { entry -> Entry in
+            guard let newOwned = ownedFlips[entry.id] else { return entry }
+            var e = entry
+            e.owned = newOwned
+            return e
+        }
+        softwareLists = softwareLists.map { list in
+            let updated = list.entries.map { entry -> Entry in
+                guard let newOwned = ownedFlips[entry.id] else { return entry }
+                var e = entry
+                e.owned = newOwned
+                return e
+            }
+            return SoftwareList(name: list.name,
+                                description: list.description,
+                                entries: updated)
+        }
+
+        var nextPresence = presence
+        for entry in targets {
+            let owned = ownedFlips[entry.id] ?? false
+            switch entry.kind {
+            case .arcade:
+                if owned { nextPresence.arcade.insert(entry.shortName) }
+                else { nextPresence.arcade.remove(entry.shortName) }
+            case .software(let listName):
+                var set = nextPresence.softwareBySystem[listName] ?? []
+                if owned { set.insert(entry.shortName) }
+                else { set.remove(entry.shortName) }
+                nextPresence.softwareBySystem[listName] = set
+            }
+        }
+        presence = nextPresence
+    }
+
     /// Light refresh after only ROM paths changed: reload config, rebuild the
     /// presence index, and retag ownership. Does NOT re-parse software list
     /// XMLs (the expensive part of a full reload).

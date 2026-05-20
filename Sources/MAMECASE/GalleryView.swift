@@ -320,6 +320,10 @@ struct GalleryView: View {
             }
         } label: { Label(verifyMenuTitle(for: entry), systemImage: "checkmark.seal") }
         .disabled(library.config == nil)
+        Button {
+            library.rescanPresence(ids: batchIDs(triggeredBy: entry), in: system)
+        } label: { Label(rescanMenuTitle(for: entry), systemImage: "arrow.clockwise.circle") }
+        .disabled(library.config == nil)
 
         Divider()
 
@@ -419,6 +423,14 @@ struct GalleryView: View {
     private func verifyMenuTitle(for entry: Entry) -> String {
         let count = (selection.contains(entry.id) && selection.count > 1) ? selection.count : 1
         return count > 1 ? "Verify \(count) ROMs" : "Verify ROM"
+    }
+
+    /// "Rescan ROM File" / "Rescan N ROM Files". Re-checks just the
+    /// targeted entries against the filesystem, flipping their owned
+    /// flag if a file appeared or vanished since the last index pass.
+    private func rescanMenuTitle(for entry: Entry) -> String {
+        let count = (selection.contains(entry.id) && selection.count > 1) ? selection.count : 1
+        return count > 1 ? "Rescan \(count) ROM Files" : "Rescan ROM File"
     }
 
     private func downloadMenuTitle(for entry: Entry) -> String {

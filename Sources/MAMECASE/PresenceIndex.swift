@@ -9,9 +9,9 @@ import Foundation
 ///     Dreamcast, …) typically use `.chd` per software item.
 struct PresenceIndex {
     /// Short names of arcade machines present on disk.
-    let arcade: Set<String>
+    var arcade: Set<String>
     /// system shortname → set of software shortnames present on disk.
-    let softwareBySystem: [String: Set<String>]
+    var softwareBySystem: [String: Set<String>]
 
     static let empty = PresenceIndex(arcade: [], softwareBySystem: [:])
 
