@@ -300,6 +300,14 @@ struct MameConfig {
     let shaderPaths: [URL]
     /// resolved history-dat directory (mame's `historypath`, defaults to `history`)
     let historyPaths: [URL]
+    /// MAME's save-state base directory (`state_directory`, defaults to
+    /// `sta`). MAME's own layout puts states under
+    /// `<statePath>/<driver>/<slot>.sta`, which means every software-list
+    /// game on a given driver shares its slots (every SNES cart writes
+    /// into `sta/snes/`). Mamecase overrides `-state_directory` per
+    /// launch to `<statePath>/<system>/<software>` so saves are
+    /// per-software-list-entry instead.
+    let statePath: URL
     /// path to mame executable
     let executable: String
 }

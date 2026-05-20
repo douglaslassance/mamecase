@@ -33,6 +33,10 @@ enum MameConfigLoader {
         let flyerPaths = resolvePaths(values["flyers_directory"] ?? "flyers", base: mameHome)
         let shaderPaths = resolvePaths(values["glsl_shader_path"] ?? "glsl", base: mameHome)
         let historyPaths = resolvePaths(values["historypath"] ?? "history", base: mameHome)
+        // `state_directory` is single-valued in mame.ini (not a path
+        // list); first segment wins if the user did separate by `;`.
+        let statePath = resolvePaths(values["state_directory"] ?? "sta", base: mameHome).first
+            ?? mameHome.appendingPathComponent("sta", isDirectory: true)
         // MAMECASE convention: no MAME standard for "covers"; use a single
         // directory under mameHome unless we surface a setting later.
         let coverPaths = [mameHome.appendingPathComponent("covers", isDirectory: true)]
@@ -50,6 +54,7 @@ enum MameConfigLoader {
             coverPaths: coverPaths,
             shaderPaths: shaderPaths,
             historyPaths: historyPaths,
+            statePath: statePath,
             executable: executable
         )
     }

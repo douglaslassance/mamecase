@@ -534,6 +534,7 @@ struct GalleryView: View {
         let shader = UserDefaults.standard.string(forKey: "shaderScheme") ?? ""
         let args = MameLauncher.arguments(for: entry,
                                           romPaths: cfg.romPaths,
+                                          statePath: cfg.statePath,
                                           controllerScheme: scheme,
                                           shader: shader)
         let parts = [cfg.executable] + args

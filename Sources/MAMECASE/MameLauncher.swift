@@ -17,8 +17,15 @@ enum MameLauncher {
     /// scheme (basename of a `.cfg` in `ctrlrpath`) is passed via `-ctrlr`;
     /// an optional shader is passed via `-glsl_shader_mame1` (slot 1, so it
     /// layers on top of whatever the user already has in mame.ini).
+    ///
+    /// `statePath` is MAME's base state dir from mame.ini. For software-list
+    /// entries we override `-state_directory` to a per-game subdirectory
+    /// (`<statePath>/<system>/<software>`) so each cart on a shared driver
+    /// gets its own save slots. Arcade is left alone — MAME already keys
+    /// arcade state files by driver, which equals the game.
     static func arguments(for entry: Entry,
                           romPaths: [URL],
+                          statePath: URL? = nil,
                           controllerScheme: String? = nil,
                           shader: String? = nil) -> [String] {
         var args: [String] = []
@@ -39,6 +46,15 @@ enum MameLauncher {
         case .arcade:
             args.append(entry.shortName)
         case .software(let system):
+            if let statePath {
+                let perGame = statePath
+                    .appendingPathComponent(system, isDirectory: true)
+                    .appendingPathComponent(entry.shortName, isDirectory: true)
+                try? FileManager.default.createDirectory(at: perGame,
+                                                         withIntermediateDirectories: true)
+                args.append("-state_directory")
+                args.append(perGame.path)
+            }
             args.append(system)
             args.append(entry.shortName)
         }
