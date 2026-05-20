@@ -104,6 +104,16 @@ struct GalleryView: View {
             }
             return .ignored
         }
+        // ⌘A / ⌃A → select every entry the current filter+search show.
+        .onKeyPress(KeyEquivalent("a")) {
+            let mods = NSEvent.modifierFlags
+            guard mods.contains(.command) || mods.contains(.control) else {
+                return .ignored
+            }
+            selection = Set(entries.map(\.id))
+            anchor = entries.first?.id
+            return .handled
+        }
         .onChange(of: system.id) { _, _ in
             selection.removeAll()
             anchor = nil
