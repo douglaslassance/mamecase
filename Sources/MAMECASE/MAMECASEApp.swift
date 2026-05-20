@@ -38,17 +38,6 @@ struct MAMECASEApp: App {
                     .keyboardShortcut("/", modifiers: [.command, .shift])
                 Divider()
                 Button {
-                    // Instant rescan picks up ROMs the user just dragged
-                    // into a rompath; arcade re-index runs in the
-                    // background for any new mame -listfull entries.
-                    library.rescanPresence()
-                    Task { await library.indexArcade() }
-                } label: {
-                    Text(library.arcadeIndexing ? "Refreshing…" : "Refresh")
-                }
-                .keyboardShortcut("r")
-                .disabled(library.arcadeIndexing || library.config == nil)
-                Button {
                     Task { await library.verifyAll() }
                 } label: {
                     Text(library.isVerifyingAll ? "Verifying…" : "Verify All ROMs")

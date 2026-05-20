@@ -513,7 +513,7 @@ final class Library: ObservableObject {
             mediaGeneration &+= 1
             // A user running Update Media has often just dragged a fresh
             // ROM into a rompath — rescan presence so the tile flips
-            // from missing to owned without forcing a separate ⌘R.
+            // from missing to owned without a separate right-click.
             rescanPresence()
         }
 
