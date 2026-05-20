@@ -289,6 +289,18 @@ final class Library: ObservableObject {
         await load(settings: settings)
     }
 
+    /// Re-walk every configured rompath and retag ownership based on
+    /// what's on disk right now. Cheap (filesystem listing, no content
+    /// reads) — call this after the user drags new ROM files into a
+    /// rompath, or after a download / archive-extraction lands files.
+    /// Doesn't touch settings or re-parse software-list XMLs.
+    func rescanPresence() {
+        guard config != nil else { return }
+        rebuildPresence()
+        tagSoftwareOwnership()
+        tagArcadeOwnership()
+    }
+
     /// Light refresh after only ROM paths changed: reload config, rebuild the
     /// presence index, and retag ownership. Does NOT re-parse software list
     /// XMLs (the expensive part of a full reload).
@@ -445,6 +457,10 @@ final class Library: ObservableObject {
         defer {
             arcadeStatus = nil
             mediaGeneration &+= 1
+            // A user running Update Media has often just dragged a fresh
+            // ROM into a rompath — rescan presence so the tile flips
+            // from missing to owned without forcing a separate ⌘R.
+            rescanPresence()
         }
 
         // 1. Wipe cached files + miss markers for every target.
