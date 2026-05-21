@@ -652,7 +652,6 @@ final class Library: ObservableObject {
         do {
             try MameLauncher.launch(executable: cfg.executable,
                                     args: MameLauncher.arguments(for: entry,
-                                                                 romPaths: cfg.romPaths,
                                                                  statePath: cfg.statePath,
                                                                  controllerScheme: scheme,
                                                                  shader: shader),

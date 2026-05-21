@@ -11,28 +11,23 @@ enum MameLauncher {
         try p.run()
     }
 
-    /// Build the argument list for an entry, prefixing `-rompath` with the
-    /// combined paths (Mamecase settings + mame.ini) so MAME sees every
-    /// location regardless of how it was configured. An optional controller
-    /// scheme (basename of a `.cfg` in `ctrlrpath`) is passed via `-ctrlr`;
-    /// an optional shader is passed via `-glsl_shader_mame1` (slot 1, so it
-    /// layers on top of whatever the user already has in mame.ini).
-    ///
-    /// `statePath` is MAME's base state dir from mame.ini. For software-list
-    /// entries we override `-state_directory` to a per-game subdirectory
-    /// (`<statePath>/<system>/<software>`) so each cart on a shared driver
-    /// gets its own save slots. Arcade is left alone — MAME already keys
-    /// arcade state files by driver, which equals the game.
+    /// Build the argument list for an entry. We rely on mame.ini for
+    /// `rompath` / `hashpath` / etc. — `MameLauncher.launch` sets the
+    /// process's working directory to mame's home so MAME reads the same
+    /// ini Mamecase parsed. Only flags that we want to override or layer
+    /// on top of the ini are emitted here:
+    ///   - `-ctrlr <profile>` for a controller scheme (basename of a
+    ///     `.cfg` in `ctrlrpath`).
+    ///   - `-glsl_shader_mame1 <shader>` (slot 1) to layer over whatever
+    ///     the user already has in mame.ini.
+    ///   - `-state_directory <dir>` for software-list entries so each
+    ///     cart gets its own save slots (MAME's default layout puts
+    ///     every cart on a driver into the same slot directory).
     static func arguments(for entry: Entry,
-                          romPaths: [URL],
                           statePath: URL? = nil,
                           controllerScheme: String? = nil,
                           shader: String? = nil) -> [String] {
         var args: [String] = []
-        if !romPaths.isEmpty {
-            args.append("-rompath")
-            args.append(romPaths.map(\.path).joined(separator: ";"))
-        }
         if let scheme = controllerScheme,
            !scheme.trimmingCharacters(in: .whitespaces).isEmpty {
             args.append("-ctrlr")
