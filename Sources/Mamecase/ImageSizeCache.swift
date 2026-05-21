@@ -18,6 +18,8 @@ final class ImageSizeCache: ObservableObject {
     private var sizes: [URL: CGSize] = [:]
     private var pending: Set<URL> = []
     private var failed: Set<URL> = []
+    /// True while a coalesced bump is queued — see `scheduleBump()`.
+    private var bumpScheduled: Bool = false
     @Published private(set) var generation: Int = 0
 
     /// Returns a cached size if available. If the URL hasn't been
@@ -50,7 +52,26 @@ final class ImageSizeCache: ObservableObject {
         } else {
             failed.insert(url)
         }
-        generation &+= 1
+        scheduleBump()
+    }
+
+    /// Coalesce `generation` bumps. The cache used to bump on every
+    /// measurement completion, which created a feedback loop in
+    /// galleries with many entries: each bump triggers a SwiftUI re-
+    /// render of the gallery, the masonry's `buildLayout()` walks every
+    /// entry and queries `size(for:)` for each, those queries schedule
+    /// fresh measurements, those measurements complete and bump again.
+    /// 100ms debounce caps re-render rate to ~10 Hz regardless of how
+    /// many measurements are in flight.
+    private func scheduleBump() {
+        guard !bumpScheduled else { return }
+        bumpScheduled = true
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            guard let self else { return }
+            self.bumpScheduled = false
+            self.generation &+= 1
+        }
     }
 
     /// Reads only the image's header for the natural pixel dimensions
