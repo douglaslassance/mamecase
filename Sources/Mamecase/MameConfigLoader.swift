@@ -17,7 +17,17 @@ enum MameConfigLoader {
         let ini = settings.resolvedMameIni
         let mameHome = settings.resolvedMameHome
 
-        let values = (try? parseIni(at: ini)) ?? [:]
+        // MAME splits options across two files: mame.ini for core
+        // emulator settings, ui.ini for the UI plugin's settings
+        // (flyers_directory, covers_directory, categorypath, ui_path,
+        // and an enriched historypath). We parse both and merge —
+        // ui.ini wins when keys overlap because that's the file the
+        // user actually edits through MAME's UI.
+        var values = (try? parseIni(at: ini)) ?? [:]
+        let uiIni = mameHome.appendingPathComponent("ui.ini")
+        if let uiValues = try? parseIni(at: uiIni) {
+            for (k, v) in uiValues { values[k] = v }
+        }
 
         // ROM paths come straight from mame.ini's `rompath` line — Mamecase
         // doesn't merge in any side-channel list any more.
