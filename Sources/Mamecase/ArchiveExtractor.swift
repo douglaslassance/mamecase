@@ -74,7 +74,13 @@ enum ArchiveExtractor {
         guard let tool = sevenZipCandidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
             throw ArchiveError.noExtractor("7zz")
         }
-        try run(tool: tool, args: ["x", "-aoa", "-bd", "-y", "-o\(outDir.path)", archive.path])
+        // `-snl` preserves symlinks. Without it 7zz writes the link
+        // target as a tiny text file (e.g. a `firemen.png` alias to
+        // `Firemen, The (Europe) (En,Fr,De).png` becomes a 36-byte
+        // text file containing the target name, which then poisons
+        // the media cache and shows up as broken thumbnails.
+        try run(tool: tool, args: ["x", "-aoa", "-bd", "-y", "-snl",
+                                   "-o\(outDir.path)", archive.path])
     }
 
     private static func run(tool: String, args: [String]) throws {

@@ -125,6 +125,10 @@ actor MediaProvider {
                     let (data, response) = try await session.data(from: url)
                     guard let http = response as? HTTPURLResponse,
                           http.statusCode == 200 else { continue }
+                    // Reject non-image responses (proxy error pages,
+                    // captive-portal redirects, exhausted Git LFS quota
+                    // pointer files, …). Don't poison the cache.
+                    guard MediaProvider.looksLikeImageBytes(data) else { continue }
                     try FileManager.default.createDirectory(at: dest.deletingLastPathComponent(),
                                                             withIntermediateDirectories: true)
                     try data.write(to: dest, options: .atomic)
@@ -420,19 +424,64 @@ actor MediaProvider {
 
     private static let imageExtensions = ["png", "jpg", "jpeg"]
 
-    private static func looseFileURL(for entry: Entry, kind: MediaKind, config: MameConfig) -> URL? {
+    /// Defence against junk files in the media cache — old `flyers.7z`
+    /// extractions wrote symlink targets as text content, fetched HTTP
+    /// error pages can land in the cache as bytes, etc. Sniff the first
+    /// 8 bytes against known image magic numbers; reject otherwise.
+    /// Deletes the bad file so the next lookup falls through to the
+    /// online-fetch path instead of returning the same junk forever.
+    private static func isValidImageFile(_ url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        guard let head = try? handle.read(upToCount: 8), head.count >= 3 else {
+            return false
+        }
+        return looksLikeImageBytes(head)
+    }
+
+    /// Shared magic-bytes sniff used by both the disk-cache validator
+    /// and the online-fetch guard. PNG / JPEG / GIF — covers everything
+    /// libretro and MAME snap archives ship in practice.
+    fileprivate static func looksLikeImageBytes(_ data: Data) -> Bool {
+        let b = Array(data.prefix(8))
+        guard b.count >= 3 else { return false }
+        // PNG: 89 50 4E 47 0D 0A 1A 0A
+        if b.count >= 8 && b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E && b[3] == 0x47
+           && b[4] == 0x0D && b[5] == 0x0A && b[6] == 0x1A && b[7] == 0x0A { return true }
+        // JPEG: FF D8 FF
+        if b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF { return true }
+        // GIF: "GIF87a" / "GIF89a"
+        if b.count >= 6 && b[0] == 0x47 && b[1] == 0x49 && b[2] == 0x46
+           && b[3] == 0x38 { return true }
+        return false
+    }
+
+    /// Returns the URL if it points to an existing, valid image file;
+    /// nil otherwise. Junk files (zero-byte, text, symlink-target
+    /// text) are removed so subsequent lookups can re-fetch instead
+    /// of repeatedly hitting the same garbage.
+    private static func validImageURL(_ url: URL) -> URL? {
         let fm = FileManager.default
+        guard fm.fileExists(atPath: url.path) else { return nil }
+        if isValidImageFile(url) { return url }
+        try? fm.removeItem(at: url)
+        return nil
+    }
+
+    private static func looseFileURL(for entry: Entry, kind: MediaKind, config: MameConfig) -> URL? {
         let basename = basename(for: entry)
         for dir in directories(for: entry, kind: kind, config: config) {
             for ext in imageExtensions {
-                let url = dir.appendingPathComponent("\(basename).\(ext)")
-                if fm.fileExists(atPath: url.path) { return url }
+                if let url = validImageURL(dir.appendingPathComponent("\(basename).\(ext)")) {
+                    return url
+                }
             }
             if kind == .snap {
                 let subdir = dir.appendingPathComponent(basename, isDirectory: true)
                 for fileName in ["0000.png", "snap.png"] {
-                    let url = subdir.appendingPathComponent(fileName)
-                    if fm.fileExists(atPath: url.path) { return url }
+                    if let url = validImageURL(subdir.appendingPathComponent(fileName)) {
+                        return url
+                    }
                 }
             }
         }
@@ -442,12 +491,12 @@ actor MediaProvider {
     // MARK: - Phase 2: cached files from prior archive extraction
 
     private static func cachedFileURL(for entry: Entry, kind: MediaKind) -> URL? {
-        let fm = FileManager.default
         let cacheDir = MediaProvider.shared.cacheDir(for: kind)
         let basename = basename(for: entry)
         for ext in imageExtensions {
-            let url = cacheDir.appendingPathComponent("\(basename).\(ext)")
-            if fm.fileExists(atPath: url.path) { return url }
+            if let url = validImageURL(cacheDir.appendingPathComponent("\(basename).\(ext)")) {
+                return url
+            }
         }
         return nil
     }
