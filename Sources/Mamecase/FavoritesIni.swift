@@ -57,9 +57,12 @@ enum FavoritesIni {
         var lines = text.split(omittingEmptySubsequences: false,
                                whereSeparator: { $0.isNewline })
             .map(String.init)
-        // Skip the leading `[ROOT_FOLDER]` header (and any future
-        // section markers).
-        while let first = lines.first, first.hasPrefix("[") {
+        // Skip the header. MAME writes `[ROOT_FOLDER]\n[Favorite]\n\n`
+        // — two section markers plus one blank separator — so we have
+        // to drop blank lines as well as `[…]` lines until we hit the
+        // first record's shortname.
+        while let first = lines.first,
+              first.hasPrefix("[") || first.isEmpty {
             lines.removeFirst()
         }
         var ids: Set<Entry.ID> = []
