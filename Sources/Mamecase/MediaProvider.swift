@@ -303,12 +303,21 @@ actor MediaProvider {
             guard let current = ArchiveFingerprint.current(for: archive) else { return true }
             return fingerprints[archive.path].map { !$0.matches(current) } ?? true
         }
-        if !staleArchives.isEmpty {
-            try? FileManager.default.removeItem(at: cacheDir)
-            try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
-            for archive in archives {
-                extracted.remove(archive)
-            }
+        if staleArchives.isEmpty {
+            // Cache is fresh — every archive's (size, mtime) matches
+            // what we stored on the last successful extraction. Mark
+            // them all as extracted-in-this-session and bail. Without
+            // this short-circuit, the per-archive loop below would
+            // run 7zz again on every launch because `extracted` resets
+            // when the actor instance does (i.e. on every cold start).
+            for archive in archives { extracted.insert(archive) }
+            out.anySucceeded = true
+            return out
+        }
+        try? FileManager.default.removeItem(at: cacheDir)
+        try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+        for archive in archives {
+            extracted.remove(archive)
         }
         for archive in archives {
             if extracted.contains(archive) { out.anySucceeded = true; continue }
