@@ -414,15 +414,6 @@ struct ContentView: View {
             .frame(width: 360)
         }
         .frame(minWidth: 220)
-        .overlay(alignment: .bottom) {
-            if let status = library.arcadeStatus {
-                HStack {
-                    ProgressView().controlSize(.small)
-                    Text(status).font(.caption).foregroundStyle(.secondary)
-                }
-                .padding(8)
-            }
-        }
     }
 
     @ViewBuilder
