@@ -1,4 +1,4 @@
-# MAMECASE conventions
+# Mamecase conventions
 
 ## Commit messages
 

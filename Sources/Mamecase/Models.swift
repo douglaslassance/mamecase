@@ -224,7 +224,7 @@ enum RegionFilter: String, CaseIterable, Identifiable {
 /// `flyers` is an abstraction over MAME's "flyer" assets — for arcade
 /// entries it resolves to the machine's flyer (mame.ini's
 /// `flyers_directory`); for software-list entries it resolves to per-game
-/// box art under a MAMECASE-managed covers directory (defaults to
+/// box art under a Mamecase-managed covers directory (defaults to
 /// `~/.mame/covers/<list>/<short>.png`). Named `flyers` to mirror
 /// mame.ini's terminology rather than coining a Mamecase-specific term.
 enum MediaKind: String, CaseIterable, Identifiable {
@@ -319,7 +319,7 @@ struct MameConfig {
     let ctrlrPaths: [URL]
     /// resolved flyer dirs (mame's `flyers_directory`)
     let flyerPaths: [URL]
-    /// resolved cover-art dirs (MAMECASE convention; defaults to `<mameHome>/covers`)
+    /// resolved cover-art dirs (Mamecase convention; defaults to `<mameHome>/covers`)
     let coverPaths: [URL]
     /// resolved shader directory (mame's `glsl_shader_path`, defaults to `glsl`)
     let shaderPaths: [URL]

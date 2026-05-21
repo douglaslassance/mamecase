@@ -37,7 +37,7 @@ enum MameConfigLoader {
         // list); first segment wins if the user did separate by `;`.
         let statePath = resolvePaths(values["state_directory"] ?? "sta", base: mameHome).first
             ?? mameHome.appendingPathComponent("sta", isDirectory: true)
-        // MAMECASE convention: no MAME standard for "covers"; use a single
+        // Mamecase convention: no MAME standard for "covers"; use a single
         // directory under mameHome unless we surface a setting later.
         let coverPaths = [mameHome.appendingPathComponent("covers", isDirectory: true)]
 

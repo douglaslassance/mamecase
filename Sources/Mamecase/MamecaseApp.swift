@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 @main
-struct MAMECASEApp: App {
+struct MamecaseApp: App {
     @StateObject private var library = Library()
     @StateObject private var settings = AppSettings()
     @AppStorage("showStatusBar") private var showStatusBar: Bool = true
