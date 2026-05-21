@@ -378,6 +378,15 @@ final class Library: ObservableObject {
     private func loadSoftwareLists(cfg: MameConfig) async {
         let hashPaths = cfg.hashPaths
         let lists: [SoftwareList] = await Task.detached(priority: .userInitiated) {
+            // Fast path: SoftwareListsCache holds the parsed shape from
+            // a previous launch. Invalidates whenever any XML's
+            // (size, mtime) changes — covers MAME upgrades, manual
+            // edits, and dropped-in third-party hash XMLs.
+            let signature = SoftwareListsCache.signature(for: hashPaths)
+            if let cached = SoftwareListsCache.load(signature: signature) {
+                return cached
+            }
+            // Cold path: walk every XML and persist the result.
             var collected: [SoftwareList] = []
             let fm = FileManager.default
             for hashDir in hashPaths {
@@ -390,6 +399,7 @@ final class Library: ObservableObject {
                     }
                 }
             }
+            SoftwareListsCache.save(collected, signature: signature)
             return collected
         }.value
         self.softwareLists = lists
