@@ -187,19 +187,74 @@ actor LibretroThumbnails {
         if let exact = names.first(where: { $0.lowercased() == displayLower }) {
             return exact
         }
+        let sourceRegion = LibretroThumbnails.region(of: displayName)
+
         let strict = LibretroThumbnails.normalize(displayName, mode: .foldSubtitles)
         if !strict.isEmpty,
-           let m = names.first(where: {
+           let m = bestCandidate(in: names, sourceRegion: sourceRegion, predicate: {
                LibretroThumbnails.normalize($0, mode: .foldSubtitles) == strict
            }) {
             return m
         }
+
         let loose = LibretroThumbnails.normalize(displayName, mode: .stripAll)
         guard !loose.isEmpty else { return nil }
-        return names.first(where: {
+        return bestCandidate(in: names, sourceRegion: sourceRegion, predicate: {
             LibretroThumbnails.normalize($0, mode: .stripAll) == loose
         })
     }
+
+    /// Pick the candidate whose region tag matches the source's region.
+    /// Falls back to the first candidate when no region match is found.
+    /// Without this, Mamecase tile (Jpn) and tile (Euro) for the same
+    /// game both pick whatever libretro entry happens to be first in
+    /// iteration order — so the JP cover ends up showing on the EU
+    /// tile (or vice-versa).
+    private func bestCandidate(in names: [String],
+                               sourceRegion: String?,
+                               predicate: (String) -> Bool) -> String? {
+        var fallback: String?
+        for name in names where predicate(name) {
+            if fallback == nil { fallback = name }
+            if let src = sourceRegion,
+               LibretroThumbnails.region(of: name) == src {
+                return name
+            }
+        }
+        return fallback
+    }
+
+    /// Canonical region key extracted from a display name's paren tag.
+    /// Returns nil when no recognisable region tag is present (a
+    /// region-less libretro entry should match either a regioned or
+    /// region-less MAME description, so callers treat nil as wildcard).
+    fileprivate static func region(of displayName: String) -> String? {
+        let lower = displayName.lowercased()
+        // First paren group — `(Jpn, Rev. A)`, `(Europe)`, `(USA, v1.001)`.
+        guard let openIndex = lower.firstIndex(of: "("),
+              let closeIndex = lower[openIndex...].firstIndex(of: ")") else {
+            return nil
+        }
+        let inner = String(lower[lower.index(after: openIndex)..<closeIndex])
+        for part in inner.split(separator: ",").map({ $0.trimmingCharacters(in: .whitespaces) }) {
+            if let canonical = regionAliases[part] { return canonical }
+        }
+        return nil
+    }
+
+    /// Maps every region-ish token we recognise to a canonical key so
+    /// MAME's `Jpn` and libretro's `Japan` match.
+    private static let regionAliases: [String: String] = [
+        "japan": "japan", "jpn": "japan", "jp": "japan", "ja": "japan",
+        "ntsc-j": "japan",
+        "usa": "usa", "us": "usa", "ntsc-u": "usa",
+        "europe": "europe", "euro": "europe", "eu": "europe", "pal": "europe",
+        "pal-e": "europe",
+        "world": "world",
+        "asia": "asia",
+        "korea": "korea", "ko": "korea", "kor": "korea",
+        "australia": "australia", "aus": "australia",
+    ]
 
     fileprivate enum NormalizeMode {
         /// Drop bracketed tags. Drop parens whose contents look like
