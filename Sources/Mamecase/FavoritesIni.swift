@@ -64,11 +64,15 @@ enum FavoritesIni {
         }
         var ids: Set<Entry.ID> = []
         var i = 0
-        while i + 14 < lines.count {
+        // MAME's record is 16 lines: the 14 fields it parses plus a
+        // placeholder "usage" line at index 13 (currently always blank
+        // per the TODO in MAME source). `listname` is the field that
+        // tells us arcade vs software-list.
+        while i + 15 < lines.count {
             let shortname = lines[i]
             let listname = lines[i + 8]
             if shortname.isEmpty {
-                i += 15
+                i += 16
                 continue
             }
             if listname.isEmpty {
@@ -76,7 +80,7 @@ enum FavoritesIni {
             } else {
                 ids.insert("\(listname)/\(shortname)")
             }
-            i += 15
+            i += 16
         }
         return ids
     }
@@ -90,7 +94,9 @@ enum FavoritesIni {
     static func save(_ ids: Set<Entry.ID>, allEntries: [Entry], uiPaths: [URL]) {
         guard let writeDir = uiPaths.first else { return }
         let entryByID = Dictionary(uniqueKeysWithValues: allEntries.map { ($0.id, $0) })
-        var lines: [String] = ["[ROOT_FOLDER]"]
+        // MAME writes a three-line header: [ROOT_FOLDER], [Favorite],
+        // then a blank line, before the first record.
+        var lines: [String] = ["[ROOT_FOLDER]", "[Favorite]", ""]
         for id in ids.sorted() {
             guard let entry = entryByID[id] else { continue }
             let record = makeRecord(for: entry)
@@ -162,6 +168,11 @@ enum FavoritesIni {
     }
 
     private static func serialize(_ r: Record) -> [String] {
+        // 16 lines per record matching MAME's writer in
+        // src/frontend/mame/ui/inifile.cpp::save_favorites. The blank
+        // line at index 13 is the "usage" field MAME currently writes
+        // as empty (TODO in their source). Dropping it shifts every
+        // subsequent record's fields by one and corrupts the file.
         [
             r.shortname,
             r.longname,
@@ -176,6 +187,7 @@ enum FavoritesIni {
             r.instance,
             String(r.startempty),
             r.parentlongname,
+            "",
             r.devicetype,
             String(r.available),
         ]
