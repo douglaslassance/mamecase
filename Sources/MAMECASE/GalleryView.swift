@@ -11,10 +11,15 @@ struct GalleryView: View {
     let showFailingOnly: Bool
     let regionFilter: RegionFilter
     let layoutMode: LayoutMode
-    /// Reset every filter ContentView owns (missing toggle, favourites,
-    /// failing-only, region) — called by the empty-state Clear Filters
-    /// button. The search text we own and clear locally.
+    /// Reset the check / favourites / region filters ContentView owns —
+    /// called by the empty-state Clear Filters button. The search text
+    /// we own and clear locally. Does NOT touch showMissing, which has
+    /// its own dedicated button.
     let clearFilters: () -> Void
+    /// Flip "Show Missing Files" on. Surfaced in the empty state as a
+    /// separate, narrower action when hideMissing is what's hiding
+    /// everything.
+    let enableShowMissing: () -> Void
     @Binding var searchText: String
     @Binding var selection: Set<Entry.ID>
 
@@ -131,6 +136,9 @@ struct GalleryView: View {
                 } description: {
                     Text(emptyHint)
                 } actions: {
+                    if hideMissing {
+                        Button("Show Missing") { enableShowMissing() }
+                    }
                     if hasActiveFilters {
                         Button("Clear Filters") {
                             clearFilters()
@@ -631,11 +639,11 @@ struct GalleryView: View {
         return "'\(escaped)'"
     }
 
-    /// True when at least one of the view-level filters is non-default.
-    /// Drives the empty-state Clear Filters button.
+    /// True when at least one of the filters Clear Filters resets is
+    /// active (favorites, failing, region, search). Excludes hideMissing
+    /// — that has its own button so the two actions don't overlap.
     private var hasActiveFilters: Bool {
-        hideMissing
-            || showFavoritesOnly
+        showFavoritesOnly
             || showFailingOnly
             || regionFilter != .all
             || !searchText.trimmingCharacters(in: .whitespaces).isEmpty

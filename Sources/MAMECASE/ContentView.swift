@@ -441,11 +441,11 @@ struct ContentView: View {
                         regionFilter: regionFilter,
                         layoutMode: layoutMode,
                         clearFilters: {
-                            showMissing = true
                             showFavoritesOnly = false
                             showFailingOnly = false
                             regionFilter = .all
                         },
+                        enableShowMissing: { showMissing = true },
                         searchText: $searchText,
                         selection: $entrySelection)
                 .id(node.id)
