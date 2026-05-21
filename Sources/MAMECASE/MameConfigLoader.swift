@@ -95,10 +95,18 @@ enum MameConfigLoader {
 
     private static func expand(_ path: String, base: URL) -> URL {
         let expanded = (path as NSString).expandingTildeInPath
+        let url: URL
         if expanded.hasPrefix("/") {
-            return URL(fileURLWithPath: expanded)
+            url = URL(fileURLWithPath: expanded)
+        } else {
+            url = base.appendingPathComponent(expanded)
         }
-        return base.appendingPathComponent(expanded)
+        // Resolve symlinks at the source so downstream callers see a
+        // real directory. Without this, `FileManager.contentsOfDirectory(at:)`
+        // rejects symlinked rompaths with ENOTDIR even though the
+        // string-based variant follows them — see Foundation quirk
+        // documented at the resolution site below.
+        return url.resolvingSymlinksInPath()
     }
 
     private static func dedupePreservingOrder(_ urls: [URL]) -> [URL] {
