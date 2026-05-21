@@ -440,6 +440,12 @@ struct ContentView: View {
                         showFailingOnly: showFailingOnly,
                         regionFilter: regionFilter,
                         layoutMode: layoutMode,
+                        clearFilters: {
+                            showMissing = true
+                            showFavoritesOnly = false
+                            showFailingOnly = false
+                            regionFilter = .all
+                        },
                         searchText: $searchText,
                         selection: $entrySelection)
                 .id(node.id)

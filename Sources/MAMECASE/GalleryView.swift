@@ -11,6 +11,10 @@ struct GalleryView: View {
     let showFailingOnly: Bool
     let regionFilter: RegionFilter
     let layoutMode: LayoutMode
+    /// Reset every filter ContentView owns (missing toggle, favourites,
+    /// failing-only, region) — called by the empty-state Clear Filters
+    /// button. The search text we own and clear locally.
+    let clearFilters: () -> Void
     @Binding var searchText: String
     @Binding var selection: Set<Entry.ID>
 
@@ -122,9 +126,18 @@ struct GalleryView: View {
         .searchable(text: $searchText, placement: .toolbar, prompt: "Search \(system.displayName)")
         .overlay {
             if entries.isEmpty {
-                ContentUnavailableView("No entries",
-                                       systemImage: "tray",
-                                       description: Text(emptyHint))
+                ContentUnavailableView {
+                    Label("No entries", systemImage: "tray")
+                } description: {
+                    Text(emptyHint)
+                } actions: {
+                    if hasActiveFilters {
+                        Button("Clear Filters") {
+                            clearFilters()
+                            searchText = ""
+                        }
+                    }
+                }
             }
         }
         .alert("Delete ROMs?",
@@ -616,6 +629,16 @@ struct GalleryView: View {
         }
         let escaped = s.replacingOccurrences(of: "'", with: "'\\''")
         return "'\(escaped)'"
+    }
+
+    /// True when at least one of the view-level filters is non-default.
+    /// Drives the empty-state Clear Filters button.
+    private var hasActiveFilters: Bool {
+        hideMissing
+            || showFavoritesOnly
+            || showFailingOnly
+            || regionFilter != .all
+            || !searchText.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     private var emptyHint: String {
