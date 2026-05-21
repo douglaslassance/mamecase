@@ -55,19 +55,35 @@ final class ImageSizeCache: ObservableObject {
         scheduleBump()
     }
 
-    /// Coalesce `generation` bumps. The cache used to bump on every
-    /// measurement completion, which created a feedback loop in
-    /// galleries with many entries: each bump triggers a SwiftUI re-
-    /// render of the gallery, the masonry's `buildLayout()` walks every
-    /// entry and queries `size(for:)` for each, those queries schedule
-    /// fresh measurements, those measurements complete and bump again.
-    /// 100ms debounce caps re-render rate to ~10 Hz regardless of how
-    /// many measurements are in flight.
+    /// Coalesce `generation` bumps. With ~10k tiles in a big system
+    /// view, the previous "every 100ms" debounce still triggered a
+    /// gallery re-render mid-warmup, and each re-render took longer
+    /// than the next inter-bump interval — so the masonry never
+    /// finished a layout pass before another bump invalidated it.
+    /// Opening a context menu during that window leaves AppKit
+    /// unable to draw the menu (modal runloop is permanently
+    /// servicing SwiftUI flush observers).
+    ///
+    /// New strategy: TAIL debounce. Poll until the pending set is
+    /// empty (no measurements in flight) AND has stayed empty for
+    /// one full 200ms window, then bump. Collapses an initial burst
+    /// of N measurements into a single gallery re-render after the
+    /// queue drains, instead of one per 100ms during the burst. A
+    /// 10-second safety cap keeps a pathological measurement queue
+    /// from blocking the bump forever.
     private func scheduleBump() {
         guard !bumpScheduled else { return }
         bumpScheduled = true
         Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 100_000_000)
+            let pollNs: UInt64 = 200_000_000
+            let maxWaitNs: UInt64 = 10_000_000_000
+            var waited: UInt64 = 0
+            while waited < maxWaitNs {
+                try? await Task.sleep(nanoseconds: pollNs)
+                waited += pollNs
+                guard let s = self else { return }
+                if s.pending.isEmpty { break }
+            }
             guard let self else { return }
             self.bumpScheduled = false
             self.generation &+= 1
