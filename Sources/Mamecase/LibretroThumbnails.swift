@@ -198,10 +198,78 @@ actor LibretroThumbnails {
         }
 
         let loose = LibretroThumbnails.normalize(displayName, mode: .stripAll)
+        if !loose.isEmpty,
+           let m = bestCandidate(in: names, sourceRegion: sourceRegion, predicate: {
+               LibretroThumbnails.normalize($0, mode: .stripAll) == loose
+           }) {
+            return m
+        }
         guard !loose.isEmpty else { return nil }
-        return bestCandidate(in: names, sourceRegion: sourceRegion, predicate: {
-            LibretroThumbnails.normalize($0, mode: .stripAll) == loose
-        })
+
+        // Token-set equality — catches reordered titles like
+        // "007 - GoldenEye" ↔ "GoldenEye 007". Compares word sets
+        // without regard to order or separator, but requires both
+        // sides to contain exactly the same multiset of words.
+        let srcTokens = LibretroThumbnails.tokenSet(of: loose)
+        if srcTokens.count >= 2,
+           let m = bestCandidate(in: names, sourceRegion: sourceRegion, predicate: {
+               LibretroThumbnails.tokenSet(of: LibretroThumbnails.normalize($0, mode: .stripAll)) == srcTokens
+           }) {
+            return m
+        }
+
+        // Subtitle-prefix — accept when one side is a dash-separated
+        // segment prefix of the other. Libretro often includes a region's
+        // local subtitle ("Wave Race 64 - Kawasaki Jet Ski") that MAME's
+        // canonical name doesn't carry, or vice versa.
+        let srcSegs = LibretroThumbnails.dashSegments(of: strict)
+        if let m = bestCandidate(in: names, sourceRegion: sourceRegion, predicate: {
+            let candSegs = LibretroThumbnails.dashSegments(of:
+                LibretroThumbnails.normalize($0, mode: .foldSubtitles))
+            return LibretroThumbnails.isSegmentPrefix(srcSegs, of: candSegs)
+                || LibretroThumbnails.isSegmentPrefix(candSegs, of: srcSegs)
+        }) {
+            return m
+        }
+
+        // Space-stripped equality — last-resort for spelling variants
+        // like "Mega Man" / "Megaman" or "Rakuga Kids" / "Rakugakids".
+        // Strips every space from both sides and compares verbatim.
+        let srcSquashed = LibretroThumbnails.squashSpaces(loose)
+        if srcSquashed.count >= 5,
+           let m = bestCandidate(in: names, sourceRegion: sourceRegion, predicate: {
+               LibretroThumbnails.squashSpaces(LibretroThumbnails.normalize($0, mode: .stripAll))
+                   == srcSquashed
+           }) {
+            return m
+        }
+
+        return nil
+    }
+
+    private static func tokenSet(of s: String) -> Set<String> {
+        Set(s.split(whereSeparator: { $0.isWhitespace || $0 == "-" })
+            .map(String.init)
+            .filter { !$0.isEmpty })
+    }
+
+    private static func dashSegments(of s: String) -> [String] {
+        s.components(separatedBy: " - ")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// True when `prefix` is a non-empty proper prefix of `whole`'s
+    /// segments. Proper = at least one extra segment on the longer side;
+    /// equal sequences would have been caught by the strict/loose tiers
+    /// already.
+    private static func isSegmentPrefix(_ prefix: [String], of whole: [String]) -> Bool {
+        guard !prefix.isEmpty, prefix.count < whole.count else { return false }
+        return Array(whole.prefix(prefix.count)) == prefix
+    }
+
+    private static func squashSpaces(_ s: String) -> String {
+        s.filter { !$0.isWhitespace }
     }
 
     /// Pick the candidate whose region tag matches the source's region.
