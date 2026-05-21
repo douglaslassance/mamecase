@@ -120,19 +120,19 @@ struct SystemNode: Identifiable, Hashable {
             return false
         }
 
-        /// SF Symbol used in the sidebar — one icon per node "shape"
-        /// rather than per system. Software lists use a generic
-        /// cartridge symbol whether they're cartridge- or disc-based,
-        /// since matching every console to its own glyph isn't tractable.
+        /// SF Symbol used in the sidebar. Outline variants (no `.fill`)
+        /// to match the lighter weight Apple uses for iTunes / Music
+        /// sidebars. Arcade gets the same `memorychip` glyph as every
+        /// other system — singling it out with a controller felt
+        /// inconsistent.
         var sidebarIcon: String {
             switch self {
-            case .arcade: return "gamecontroller.fill"
-            case .software: return "memorychip.fill"
+            case .arcade, .software: return "memorychip"
             case .cross(let scope):
                 switch scope {
-                case .all: return "rectangle.stack.fill"
-                case .recent: return "clock.fill"
-                case .playlist: return "play.square.fill"
+                case .all: return "rectangle.stack"
+                case .recent: return "clock"
+                case .playlist: return "play.square"
                 }
             }
         }
