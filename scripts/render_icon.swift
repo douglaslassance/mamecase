@@ -1,10 +1,17 @@
 #!/usr/bin/env swift
+// Renders Mamecase's app icon: an off-white squircle with the
+// `gamecontroller.fill` SF Symbol centered in near-black. Produces all
+// PNGs required by an `.iconset` directory.
+//
+// Usage (driven by scripts/bundle.sh):
+//   swift scripts/render_icon.swift <output-iconset-dir>
+
 import AppKit
 import Foundation
 
-// Renders Mamecase's app icon: a rounded-rect background with the
-// `gamecontroller.fill` SF Symbol centered in white. Produces all PNGs
-// required by an `.iconset` directory.
+let symbolName = "gamecontroller.fill"
+let backgroundColor = NSColor(calibratedRed: 0.96, green: 0.96, blue: 0.97, alpha: 1)
+let foregroundColor = NSColor(calibratedRed: 0.11, green: 0.11, blue: 0.12, alpha: 1)
 
 let args = CommandLine.arguments
 guard args.count >= 2 else {
@@ -14,7 +21,7 @@ guard args.count >= 2 else {
 let outDir = URL(fileURLWithPath: args[1])
 try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
 
-let sizes: [(name: String, pixels: CGFloat)] = [
+let sizes: [(name: String, pixels: Int)] = [
     ("icon_16x16.png", 16),
     ("icon_16x16@2x.png", 32),
     ("icon_32x32.png", 32),
@@ -27,48 +34,57 @@ let sizes: [(name: String, pixels: CGFloat)] = [
     ("icon_512x512@2x.png", 1024),
 ]
 
-@MainActor
-func renderIcon(size pixels: CGFloat, to url: URL) {
-    let size = NSSize(width: pixels, height: pixels)
-    let canvas = NSImage(size: size)
-    canvas.lockFocus()
+func renderPNG(pixelSize: Int) -> Data? {
+    guard let rep = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: pixelSize,
+        pixelsHigh: pixelSize,
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bytesPerRow: 0,
+        bitsPerPixel: 0
+    ) else { return nil }
+    rep.size = NSSize(width: pixelSize, height: pixelSize)
 
-    NSGraphicsContext.current?.imageInterpolation = .high
+    NSGraphicsContext.saveGraphicsState()
+    defer { NSGraphicsContext.restoreGraphicsState() }
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
 
-    // Rounded-rect background, accent blue-grey.
-    let bg = NSColor(srgbRed: 0.12, green: 0.18, blue: 0.32, alpha: 1.0)
-    let radius = pixels * 0.225
-    let bgPath = NSBezierPath(roundedRect: NSRect(origin: .zero, size: size),
-                              xRadius: radius, yRadius: radius)
-    bg.setFill()
-    bgPath.fill()
+    let size = CGFloat(pixelSize)
+    let cornerRadius = size * 0.225
+    let bg = NSBezierPath(
+        roundedRect: NSRect(x: 0, y: 0, width: size, height: size),
+        xRadius: cornerRadius,
+        yRadius: cornerRadius
+    )
+    backgroundColor.setFill()
+    bg.fill()
 
-    // Centered gamecontroller glyph.
-    let symbolPoint = pixels * 0.6
-    let config = NSImage.SymbolConfiguration(pointSize: symbolPoint, weight: .regular)
-        .applying(.init(hierarchicalColor: .white))
-    if let glyph = NSImage(systemSymbolName: "gamecontroller.fill",
-                           accessibilityDescription: nil)?
-        .withSymbolConfiguration(config) {
-        let gSize = glyph.size
-        let origin = NSPoint(x: (pixels - gSize.width) / 2,
-                             y: (pixels - gSize.height) / 2)
-        glyph.draw(at: origin, from: .zero, operation: .sourceOver, fraction: 1.0)
+    guard let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil) else {
+        return rep.representation(using: .png, properties: [:])
     }
+    let config = NSImage.SymbolConfiguration(pointSize: size * 0.55, weight: .regular)
+        .applying(NSImage.SymbolConfiguration(paletteColors: [foregroundColor]))
+    let configured = symbol.withSymbolConfiguration(config) ?? symbol
+    let symbolSize = configured.size
+    let symbolRect = NSRect(
+        x: (size - symbolSize.width) / 2,
+        y: (size - symbolSize.height) / 2,
+        width: symbolSize.width,
+        height: symbolSize.height
+    )
+    configured.draw(in: symbolRect)
 
-    canvas.unlockFocus()
-
-    guard let tiff = canvas.tiffRepresentation,
-          let rep = NSBitmapImageRep(data: tiff),
-          let png = rep.representation(using: .png, properties: [:]) else {
-        FileHandle.standardError.write(Data("failed to encode PNG for \(url.lastPathComponent)\n".utf8))
-        return
-    }
-    try? png.write(to: url, options: .atomic)
+    return rep.representation(using: .png, properties: [:])
 }
 
-await MainActor.run {
-    for (name, pixels) in sizes {
-        renderIcon(size: pixels, to: outDir.appendingPathComponent(name))
+for (name, pixels) in sizes {
+    guard let data = renderPNG(pixelSize: pixels) else {
+        FileHandle.standardError.write(Data("failed to render \(name)\n".utf8))
+        exit(1)
     }
+    try data.write(to: outDir.appendingPathComponent(name))
 }
