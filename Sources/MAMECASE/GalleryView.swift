@@ -384,6 +384,11 @@ struct GalleryView: View {
 
         // Group 4: reveal + copy (single-entry only).
         if !isMultiSelected(entry) {
+            if let rom = romFileURL(for: entry) {
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([rom])
+                } label: { Label("Reveal ROM in Finder", systemImage: "magnifyingglass") }
+            }
             if let snap = library.mediaURL(for: entry, kind: .snap) {
                 Button {
                     NSWorkspace.shared.activateFileViewerSelecting([snap])
@@ -529,6 +534,14 @@ struct GalleryView: View {
             return "\(p.targets[0].shortName).zip already exists in your rompath."
         }
         return "\(p.existing.count) of \(p.targets.count) ROMs already exist in your rompath."
+    }
+
+    /// Resolved on-disk URL for an entry's ROM, or nil if it's not
+    /// present. Handles all four MAME layouts (zip / 7z / chd / subdir)
+    /// via `VerificationCache.romFile`.
+    private func romFileURL(for entry: Entry) -> URL? {
+        guard let cfg = library.config else { return nil }
+        return VerificationCache.romFile(for: entry, in: cfg.romPaths)
     }
 
     private func isMultiSelected(_ entry: Entry) -> Bool {
