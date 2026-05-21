@@ -333,6 +333,10 @@ struct MameConfig {
     /// launch to `<statePath>/<system>/<software>` so saves are
     /// per-software-list-entry instead.
     let statePath: URL
+    /// resolved UI ini directories (mame's `ui_path`, defaults to `ui`).
+    /// MAME reads/writes `favorites.ini` here, so Mamecase reads & rewrites
+    /// the same file to round-trip favourites with MAME's own OSD.
+    let uiPaths: [URL]
     /// path to mame executable
     let executable: String
 }

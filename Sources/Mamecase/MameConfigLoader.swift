@@ -37,6 +37,10 @@ enum MameConfigLoader {
         // list); first segment wins if the user did separate by `;`.
         let statePath = resolvePaths(values["state_directory"] ?? "sta", base: mameHome).first
             ?? mameHome.appendingPathComponent("sta", isDirectory: true)
+        // MAME's UI plugin reads/writes favorites.ini here. Default is
+        // `ui` (relative to mameHome), confirmed against the MAME source
+        // (OPTION_UI_PATH in moptions.h).
+        let uiPaths = resolvePaths(values["ui_path"] ?? "ui", base: mameHome)
         // Mamecase convention: no MAME standard for "covers"; use a single
         // directory under mameHome unless we surface a setting later.
         let coverPaths = [mameHome.appendingPathComponent("covers", isDirectory: true)]
@@ -55,6 +59,7 @@ enum MameConfigLoader {
             shaderPaths: shaderPaths,
             historyPaths: historyPaths,
             statePath: statePath,
+            uiPaths: uiPaths,
             executable: executable
         )
     }

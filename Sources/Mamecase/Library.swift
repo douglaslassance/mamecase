@@ -33,7 +33,11 @@ final class Library: ObservableObject {
     /// (e.g. "ROM xxx: BAD CRC"). Populated alongside `verifications`.
     @Published var verificationDetails: [Entry.ID: String] = [:]
     @Published var verifyingIDs: Set<Entry.ID> = []
-    @Published var favorites: Set<Entry.ID> = FavoritesStore.load()
+    /// Favourites live in MAME's own `<ui_path>/favorites.ini` so they
+    /// round-trip with MAME's OSD. We populate this set during `load()`
+    /// once mame.ini has been parsed (it tells us where to look). The
+    /// UserDefaults entries pre-migration get carried over there too.
+    @Published var favorites: Set<Entry.ID> = []
     /// Entry IDs in launch order, most recent first. Populated by
     /// `launch(_:)`; persisted in Phase 4.
     @Published var recentlyLaunched: [Entry.ID] = RecentsStore.load()
@@ -172,6 +176,19 @@ final class Library: ObservableObject {
             rebuildPresence()
             tagSoftwareOwnership()
             tagArcadeOwnership()
+
+            // Hydrate favourites from MAME's favorites.ini, plus a
+            // one-shot migration from the legacy UserDefaults key. The
+            // migration writes the merged set back to the ini and
+            // clears the key so it doesn't run again.
+            var favs = FavoritesIni.load(uiPaths: cfg.uiPaths)
+            if let legacy = UserDefaults.standard.array(forKey: "favorites") as? [String],
+               !legacy.isEmpty {
+                favs.formUnion(legacy)
+                FavoritesIni.save(favs, allEntries: allEntries(), uiPaths: cfg.uiPaths)
+                UserDefaults.standard.removeObject(forKey: "favorites")
+            }
+            self.favorites = favs
 
             // Kick off the slow refresh without blocking startup.
             Task { [weak self] in
@@ -598,7 +615,7 @@ final class Library: ObservableObject {
         } else {
             favorites.insert(entry.id)
         }
-        FavoritesStore.save(favorites)
+        persistFavorites()
     }
 
     /// Set favorite state for a batch of entries (used when right-click
@@ -609,7 +626,24 @@ final class Library: ObservableObject {
         } else {
             favorites.subtract(ids)
         }
-        FavoritesStore.save(favorites)
+        persistFavorites()
+    }
+
+    /// Flush the current favourites set to `<ui_path>/favorites.ini`.
+    /// No-op when `config` hasn't loaded yet — `load()` writes its own
+    /// post-migration snapshot, so we'd just be racing.
+    private func persistFavorites() {
+        guard let cfg = config else { return }
+        FavoritesIni.save(favorites, allEntries: allEntries(), uiPaths: cfg.uiPaths)
+    }
+
+    /// Flat union of every Entry across arcade and software-list
+    /// sources, used by `FavoritesIni` to enrich each record with year
+    /// / publisher / list / disk metadata.
+    private func allEntries() -> [Entry] {
+        var all: [Entry] = arcadeEntries
+        for list in softwareLists { all.append(contentsOf: list.entries) }
+        return all
     }
 
     /// Kick off a one-time bulk extraction for `kind` if archives exist on
