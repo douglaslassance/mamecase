@@ -33,7 +33,6 @@ struct GalleryView: View {
     @State private var marqueeCurrent: CGPoint?
     @State private var marqueeBase: Set<Entry.ID> = []
     @State private var marqueeAdditive: Bool = false
-    @State private var containerWidth: CGFloat = 0
     @FocusState private var focused: Bool
 
     private var marqueeRect: CGRect? {
@@ -85,8 +84,6 @@ struct GalleryView: View {
             ScrollView {
                 galleryContent(containerWidth: geo.size.width)
             }
-            .onChange(of: geo.size.width) { _, w in containerWidth = w }
-            .onAppear { containerWidth = geo.size.width }
         }
         .coordinateSpace(name: "gallery")
         .onPreferenceChange(TileFramesKey.self) { tileFrames = $0 }
@@ -282,12 +279,23 @@ struct GalleryView: View {
                   generation: library.mediaGeneration,
                   showSystemLabel: system.kind.isCrossSystem,
                   fixedArtworkSize: fixedSize)
-            .background(GeometryReader { geo in
-                Color.clear.preference(
-                    key: TileFramesKey.self,
-                    value: [entry.id: geo.frame(in: .named("gallery"))]
-                )
-            })
+            // Per-tile frame tracking is only needed during marquee
+            // selection. Attaching a GeometryReader to every tile is
+            // a real cost on big systems (the All view has 10k+
+            // entries), so gate it on a marquee actually being in
+            // progress — at the moment the user starts dragging on
+            // the background, this branch turns on and frames begin
+            // to flow.
+            .background {
+                if marqueeStart != nil {
+                    GeometryReader { geo in
+                        Color.clear.preference(
+                            key: TileFramesKey.self,
+                            value: [entry.id: geo.frame(in: .named("gallery"))]
+                        )
+                    }
+                }
+            }
             .contentShape(Rectangle())
             .overlay(
                 MouseEventView(
