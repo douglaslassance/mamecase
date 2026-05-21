@@ -321,6 +321,9 @@ struct ContentView: View {
         }
         .onChange(of: selection) { _, new in
             if let new { persistedSystemID = new }
+            // Clearing the search on system change matches Finder /
+            // Mail / Notes — search scope is implicitly per-folder.
+            searchText = ""
         }
         .onAppear {
             restoreSelectionIfNeeded(in: sidebarSystems)
