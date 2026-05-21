@@ -113,16 +113,27 @@ enum VerificationCache {
     }
 
     /// Locate the on-disk ROM file for `entry` by walking rompaths.
+    /// MAME supports four layouts for software-list entries:
+    ///   `<system>/<shortname>.zip` / `.7z`  — cartridge sets
+    ///   `<system>/<shortname>.chd`           — single-file disc image
+    ///   `<system>/<shortname>/`              — multi-file disc / subdir set
+    /// Arcade is simpler — either `<shortname>.{zip,7z}` or `<shortname>/`.
     static func romFile(for entry: Entry, in romPaths: [URL]) -> URL? {
         let fm = FileManager.default
         let names: [String]
         switch entry.kind {
         case .arcade:
-            names = ["\(entry.shortName).zip", "\(entry.shortName).7z"]
+            names = [
+                "\(entry.shortName).zip",
+                "\(entry.shortName).7z",
+                entry.shortName,
+            ]
         case .software(let system):
             names = [
                 "\(system)/\(entry.shortName).zip",
-                "\(system)/\(entry.shortName).7z"
+                "\(system)/\(entry.shortName).7z",
+                "\(system)/\(entry.shortName).chd",
+                "\(system)/\(entry.shortName)",
             ]
         }
         for dir in romPaths {
