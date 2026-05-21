@@ -81,26 +81,25 @@ enum VerificationCache {
     ///     ANY cache entries — better to defer than to use stale data.
     ///   - `notFound` records: valid while the file is still absent.
     ///   - all others: file must exist with matching size + mtime.
-    ///   - Failing-status records (bad / bestAvailable / error) must
-    ///     have captured `details` — older records predate that field
-    ///     and we want to re-audit so the tooltip has something useful.
+    ///
+    /// Note: an earlier version invalidated failing-status records that
+    /// lacked captured diagnostic details, hoping a fresh audit would
+    /// produce some. In practice many MAME audits never emit parseable
+    /// detail lines, so those records kept being re-audited on every
+    /// launch — hundreds of background MAME processes that thrashed
+    /// `@Published` updates through the gallery and locked up the UI.
+    /// A detail-less tooltip is mildly worse than a perpetually-spinning
+    /// audit; rely on the manual "Verify ROM" right-click to regenerate
+    /// details when you want them.
     static func freshStatus(for entry: Entry,
                             romPaths: [URL],
                             cache: [Entry.ID: Record],
                             mameVersion: String?) -> RomStatus? {
         guard let record = cache[entry.id] else { return nil }
-        // Version match is mandatory. Old records without a recorded
-        // version are treated as stale so they re-verify exactly once
-        // under the new versioned scheme.
         guard let current = mameVersion,
               let recorded = record.mameVersion,
               recorded == current
         else { return nil }
-        // Pre-details cache entries lose their fast path so we capture
-        // the "what went wrong" lines on the next run.
-        if record.status.isFailing && record.details == nil {
-            return nil
-        }
         let url = romFile(for: entry, in: romPaths)
         if record.status == .notFound {
             return url == nil ? .notFound : nil
