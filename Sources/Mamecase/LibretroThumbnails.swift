@@ -169,30 +169,85 @@ actor LibretroThumbnails {
 
     // MARK: - Name matching
 
-    /// Match strategy, in order:
+    /// Match strategy, applied in order until one returns:
     ///   1. Case-insensitive exact match on the full display name.
-    ///   2. Match after stripping `(…)` / `[…]` tags and normalising the
-    ///      "The X" ↔ "X, The" article convention (libretro / No-Intro
-    ///      files articles trailing, MAME's hash XMLs put them leading).
-    ///   3. Otherwise nil.
+    ///   2. "Strict" normalize — drop bracketed tags + parens that look
+    ///      like region/lang/revision metadata, fold parens that look
+    ///      like subtitles back as inline words. Catches reordered
+    ///      subtitles such as
+    ///         "Tengai Makyou Zero Shounen Jump no Shou (Jpn)" ↔
+    ///         "Tengai Makyou Zero (Japan) (Shounen Jump no Shou)"
+    ///   3. "Loose" normalize — same as before this change: strip every
+    ///      `(…)` / `[…]` group. Fallback for cases where one side has
+    ///      subtitle parens the other side just doesn't (e.g. libretro
+    ///      may add an extra clarifying paren we shouldn't require MAME
+    ///      to have).
     private func matchName(displayName: String, in names: [String]) -> String? {
         let displayLower = displayName.lowercased()
         if let exact = names.first(where: { $0.lowercased() == displayLower }) {
             return exact
         }
-        let target = LibretroThumbnails.normalize(displayName)
-        guard !target.isEmpty else { return nil }
-        return names.first(where: { LibretroThumbnails.normalize($0) == target })
+        let strict = LibretroThumbnails.normalize(displayName, mode: .foldSubtitles)
+        if !strict.isEmpty,
+           let m = names.first(where: {
+               LibretroThumbnails.normalize($0, mode: .foldSubtitles) == strict
+           }) {
+            return m
+        }
+        let loose = LibretroThumbnails.normalize(displayName, mode: .stripAll)
+        guard !loose.isEmpty else { return nil }
+        return names.first(where: {
+            LibretroThumbnails.normalize($0, mode: .stripAll) == loose
+        })
     }
 
-    /// Strip `(…)` / `[…]` tag groups, lowercase, fold whitespace, and
-    /// normalise the leading/trailing article so e.g.
+    fileprivate enum NormalizeMode {
+        /// Drop bracketed tags. Drop parens whose contents look like
+        /// region/language/revision metadata. Fold remaining parens
+        /// back into the main string as inline words.
+        case foldSubtitles
+        /// Drop every `(…)` and `[…]` group entirely. Behaviour we had
+        /// before the rule-based matcher landed.
+        case stripAll
+    }
+
+    /// Lowercase, normalise paren handling per `mode`, replace `&` / `_`
+    /// with spaces (libretro uses `_` as a filename-safe stand-in for
+    /// `&`), and apply the article ↔ trailing-comma convention so
     ///   "The Goonies II (Euro)"        ↔ "goonies ii"
     ///   "Goonies II, The (Europe)"     ↔ "goonies ii"
-    /// fall onto the same key.
-    private static func normalize(_ s: String) -> String {
-        let stripped = stripTags(s).lowercased()
-        var n = stripped
+    /// hash to the same key.
+    fileprivate static func normalize(_ s: String, mode: NormalizeMode) -> String {
+        // Filename-safe substitution libretro uses for `&`. Replace
+        // both with a space so MAME's "Rockman & Forte" and libretro's
+        // "Rockman _ Forte" normalise the same way.
+        let cleaned = s.replacingOccurrences(of: "&", with: " ")
+                       .replacingOccurrences(of: "_", with: " ")
+            // Strip diacritics so "Légende" ↔ "Legende" hash the same.
+            .folding(options: .diacriticInsensitive, locale: .current)
+        var n = parenStripped(cleaned, mode: mode).lowercased()
+        // Fold + trim whitespace BEFORE article handling — paren
+        // removal leaves trailing spaces that would defeat the
+        // `", the"` suffix check otherwise.
+        while n.contains("  ") {
+            n = n.replacingOccurrences(of: "  ", with: " ")
+        }
+        n = n.trimmingCharacters(in: .whitespaces)
+        // Apply article rules per " - " segment, then rejoin. Compound
+        // titles split the article across the dash differently on each
+        // side: MAME writes "The Legend of Zelda - A Link to the Past",
+        // libretro writes "Legend of Zelda, The - A Link to the Past".
+        // Per-segment stripping reconciles both to
+        // "legend of zelda - link to the past".
+        let segments = n.components(separatedBy: " - ").map(stripArticles)
+        return segments.joined(separator: " - ")
+            .trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Drop a leading `the / a / an ` or trailing `, the / , a / , an`
+    /// from a single title segment.
+    private static func stripArticles(_ s: String) -> String {
+        var n = s
         for article in ["the ", "a ", "an "] {
             if n.hasPrefix(article) {
                 n = String(n.dropFirst(article.count))
@@ -206,24 +261,94 @@ actor LibretroThumbnails {
             }
         }
         return n
-            .replacingOccurrences(of: "  ", with: " ")
-            .trimmingCharacters(in: .whitespaces)
     }
 
-    private static func stripTags(_ s: String) -> String {
+    /// Apply the chosen `mode` to all `(…)` / `[…]` groups in `s`.
+    /// Brackets are always dropped (No-Intro `[!]` / serials).
+    private static func parenStripped(_ s: String, mode: NormalizeMode) -> String {
         var result = ""
-        var depth = 0
+        var parenDepth = 0
+        var bracketDepth = 0
+        var paren = ""
         for ch in s {
-            if ch == "(" || ch == "[" {
-                depth += 1
-            } else if ch == ")" || ch == "]" {
-                if depth > 0 { depth -= 1 }
-            } else if depth == 0 {
-                result.append(ch)
+            if bracketDepth > 0 {
+                if ch == "[" { bracketDepth += 1 }
+                else if ch == "]" { bracketDepth -= 1 }
+                continue
+            }
+            if parenDepth > 0 {
+                if ch == "(" {
+                    parenDepth += 1
+                    paren.append(ch)
+                } else if ch == ")" {
+                    parenDepth -= 1
+                    if parenDepth == 0 {
+                        // Decide what to do with the closed paren group.
+                        switch mode {
+                        case .foldSubtitles where !looksLikeRegionTag(paren):
+                            result.append(" ")
+                            result.append(paren)
+                            result.append(" ")
+                        default:
+                            break // drop
+                        }
+                        paren = ""
+                    } else {
+                        paren.append(ch)
+                    }
+                } else {
+                    paren.append(ch)
+                }
+                continue
+            }
+            switch ch {
+            case "[": bracketDepth = 1
+            case "(": parenDepth = 1
+            default: result.append(ch)
             }
         }
         return result
-            .replacingOccurrences(of: "  ", with: " ")
-            .trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Region / language / revision tags that we treat as metadata
+    /// rather than subtitle text. Multi-token paren groups split on `,`
+    /// — if every token passes this filter, the group is metadata.
+    private static let regionTokens: Set<String> = [
+        // Regions
+        "usa", "europe", "japan", "world", "asia", "korea", "australia",
+        "jpn", "jp", "us", "eu", "euro", "aus", "kor",
+        "ntsc-u", "ntsc-j", "pal", "pal-e",
+        // Languages
+        "en", "fr", "de", "ja", "es", "it", "nl", "sv", "pt", "ko", "zh",
+        "fi", "no", "da", "pl", "ru",
+        // Build / market flags
+        "proto", "prototype", "beta", "sample", "demo", "kiosk",
+        "not for sale", "virtual console", "arcade",
+        // Multi-disc tag without a number — the numbered version is
+        // handled by the regex below.
+        "alt",
+    ]
+
+    private static func looksLikeRegionTag(_ s: String) -> Bool {
+        let parts = s.lowercased()
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        guard !parts.isEmpty else { return false }
+        return parts.allSatisfy { part in
+            if regionTokens.contains(part) { return true }
+            // "Rev 1", "Rev A", "Rev. B"
+            if part.range(of: #"^rev\.?\s*[0-9a-z.]+$"#,
+                          options: .regularExpression) != nil { return true }
+            // "v1", "v1.0", "v1.0.3"
+            if part.range(of: #"^v\s*[0-9]+(\.[0-9]+)*$"#,
+                          options: .regularExpression) != nil { return true }
+            // "Disc 1", "Disc 1 of 3"
+            if part.range(of: #"^disc\s+[0-9]+(\s+of\s+[0-9]+)?$"#,
+                          options: .regularExpression) != nil { return true }
+            // ISO-style dates "1996-05-14"
+            if part.range(of: #"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"#,
+                          options: .regularExpression) != nil { return true }
+            return false
+        }
     }
 }
