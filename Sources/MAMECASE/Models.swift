@@ -48,15 +48,15 @@ enum SnapAspectRatio {
     }
 }
 
-/// Aspect-ratio overrides for cover/box art by software-list name. Boxes
-/// vary by system; we pick the Japanese release shape where regions
-/// disagree (US/EU boxes get cropped to fit). 3:4 portrait is the
-/// generic fallback.
-enum CoverArtAspectRatio {
+/// Aspect-ratio overrides for flyer / box art by software-list name.
+/// Boxes vary by system; we pick the Japanese release shape where
+/// regions disagree (US/EU boxes get cropped to fit). 3:4 portrait is
+/// the generic fallback.
+enum FlyerAspectRatio {
     static func ratio(for entry: Entry) -> CGFloat {
         switch entry.kind {
         case .arcade:
-            // Arcade "cover art" maps to flyers — usually portrait paper
+            // Arcade flyers are advertising paper — usually portrait
             // about 3:4.
             return 3.0/4.0
         case .software(let list):
@@ -198,26 +198,28 @@ enum RegionFilter: String, CaseIterable, Identifiable {
 /// frontends show in a grid. We use **media** as the umbrella term for
 /// snap / cover / flyer / marquee / title / etc.
 ///
-/// `coverArt` is an abstraction: for arcade entries it resolves to the
-/// machine's flyer (from `flyers_directory` in mame.ini); for software-list
-/// entries it resolves to per-game cover art under a MAMECASE-managed
-/// covers directory (defaults to `~/.mame/covers/<list>/<short>.png`).
+/// `flyers` is an abstraction over MAME's "flyer" assets — for arcade
+/// entries it resolves to the machine's flyer (mame.ini's
+/// `flyers_directory`); for software-list entries it resolves to per-game
+/// box art under a MAMECASE-managed covers directory (defaults to
+/// `~/.mame/covers/<list>/<short>.png`). Named `flyers` to mirror
+/// mame.ini's terminology rather than coining a Mamecase-specific term.
 enum MediaKind: String, CaseIterable, Identifiable {
-    case coverArt
+    case flyers
     case snap
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .coverArt: return "Cover Art"
+        case .flyers: return "Flyers"
         case .snap: return "Snap"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .coverArt: return "rectangle.portrait.on.rectangle.portrait"
+        case .flyers: return "rectangle.portrait.on.rectangle.portrait"
         case .snap: return "photo"
         }
     }

@@ -99,9 +99,9 @@ private struct MameVersionBadge: View {
     private var appearance: (Color, String, String) {
         let label = shortVersion ?? "Installed"
         if updateAvailable {
-            return (.orange, "exclamationmark.circle.fill", "\(label) — update available")
+            return (.orange, "exclamationmark.circle.fill", label)
         }
-        return (.green, "checkmark.circle.fill", "\(label) — up to date")
+        return (.green, "checkmark.circle.fill", label)
     }
 
     /// Extract a tight version label from the banner — prefer `v0.260`
@@ -124,13 +124,15 @@ private struct GeneralSettingsTab: View {
     var body: some View {
         Form {
             Section("MAME") {
-                LabeledContent("mame.ini directory") {
+                LabeledContent("mame.ini file") {
                     HStack(spacing: 8) {
-                        TextField("", text: $settings.mameHomePath, prompt: Text("~/.mame"))
+                        TextField("",
+                                  text: $settings.mameIniPath,
+                                  prompt: Text("~/.mame/mame.ini"))
                             .textFieldStyle(.roundedBorder)
                             .multilineTextAlignment(.leading)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        Button("Choose…") { pickDirectory($settings.mameHomePath) }
+                        Button("Choose…") { pickFile($settings.mameIniPath) }
                     }
                 }
                 LabeledContent("MAME executable") {
@@ -176,16 +178,6 @@ private struct GeneralSettingsTab: View {
             }
 
             Section {
-                RomPathsEditor(paths: $settings.additionalRomPaths)
-            } header: {
-                Text("Additional ROM paths")
-            } footer: {
-                Text("Merged with paths from mame.ini's `rompath`.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
                 LabeledContent("Base URL") {
                     HStack(spacing: 8) {
                         TextField("",
@@ -212,16 +204,6 @@ private struct GeneralSettingsTab: View {
             }
         }
         .formStyle(.grouped)
-    }
-
-    private func pickDirectory(_ binding: Binding<String>) {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        if panel.runModal() == .OK, let url = panel.url {
-            binding.wrappedValue = url.path
-        }
     }
 
     private func pickFile(_ binding: Binding<String>) {
@@ -306,63 +288,3 @@ private struct MediaSettingsTab: View {
     }
 }
 
-// MARK: - ROM paths editor
-
-private struct RomPathsEditor: View {
-    @Binding var paths: [String]
-    @State private var selection: Int?
-
-    var body: some View {
-        VStack(spacing: 0) {
-            List(selection: $selection) {
-                ForEach(Array(paths.enumerated()), id: \.offset) { idx, path in
-                    Text(path)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .tag(Optional(idx))
-                }
-            }
-            .listStyle(.bordered(alternatesRowBackgrounds: true))
-            .frame(minHeight: 160)
-
-            HStack(spacing: 0) {
-                Button { addPath() } label: {
-                    Image(systemName: "plus").frame(width: 22, height: 22)
-                }
-                .buttonStyle(.borderless)
-                Divider().frame(height: 16)
-                Button { removeSelected() } label: {
-                    Image(systemName: "minus").frame(width: 22, height: 22)
-                }
-                .buttonStyle(.borderless)
-                .disabled(selection == nil)
-                Spacer()
-            }
-            .padding(.horizontal, 4)
-            .padding(.vertical, 2)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .overlay(Rectangle().frame(height: 1).foregroundStyle(.separator),
-                     alignment: .top)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.separator))
-    }
-
-    private func addPath() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = true
-        if panel.runModal() == .OK {
-            for url in panel.urls where !paths.contains(url.path) {
-                paths.append(url.path)
-            }
-        }
-    }
-
-    private func removeSelected() {
-        guard let idx = selection, paths.indices.contains(idx) else { return }
-        paths.remove(at: idx)
-        selection = nil
-    }
-}

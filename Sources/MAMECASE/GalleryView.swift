@@ -241,13 +241,13 @@ struct GalleryView: View {
         case .arcade: return SnapAspectRatio.ratio(for: entry)
         case .software:
             switch entryMediaPreference {
-            case .coverArt: return CoverArtAspectRatio.ratio(for: entry)
+            case .flyers: return FlyerAspectRatio.ratio(for: entry)
             case .snap: return SnapAspectRatio.ratio(for: entry)
             }
         }
     }
 
-    @AppStorage("mediaKind") private var entryMediaPreference: MediaKind = .coverArt
+    @AppStorage("mediaKind") private var entryMediaPreference: MediaKind = .flyers
 
     @ViewBuilder
     private func tileView(for entry: Entry, fixedSize: CGSize?) -> some View {
@@ -511,11 +511,23 @@ struct GalleryView: View {
         return false
     }
 
-    /// True when the user has configured a ROM download source.
+    /// True when both prerequisites for "Download ROM" are satisfied:
+    /// the user configured a Base URL in Settings AND there's at least
+    /// one writable directory in mame.ini's rompath where the download
+    /// can land. We hide the menu item rather than show-then-refuse.
     private var romDownloadConfigured: Bool {
-        !settings.romDownloadBaseURL
+        let urlSet = !settings.romDownloadBaseURL
             .trimmingCharacters(in: .whitespaces)
             .isEmpty
+        guard urlSet else { return false }
+        guard let cfg = library.config else { return false }
+        let fm = FileManager.default
+        return cfg.romPaths.contains { dir in
+            var isDir: ObjCBool = false
+            return fm.fileExists(atPath: dir.path, isDirectory: &isDir)
+                && isDir.boolValue
+                && fm.isWritableFile(atPath: dir.path)
+        }
     }
 
     private func startDownload(triggeredBy entry: Entry) {
@@ -790,7 +802,7 @@ private struct EntryTile: View {
     /// pre-compute each tile's frame.
     var fixedArtworkSize: CGSize? = nil
 
-    @AppStorage("mediaKind") private var mediaKind: MediaKind = .coverArt
+    @AppStorage("mediaKind") private var mediaKind: MediaKind = .flyers
     @AppStorage("tileCornerRadius") private var tileCornerRadius: Double = 10
     @State private var snapURL: URL?
     @State private var coverURL: URL?
@@ -901,7 +913,7 @@ private struct EntryTile: View {
     /// follow-up read finds the file.
     private func resolveMedia() async {
         snapURL = library.mediaURL(for: entry, kind: .snap)
-        coverURL = library.mediaURL(for: entry, kind: .coverArt)
+        coverURL = library.mediaURL(for: entry, kind: .flyers)
         guard snapURL == nil && coverURL == nil else { return }
         // Only auto-fetch online media for ROMs the user actually owns.
         // For unowned entries the menu's "Download Media" action is the
@@ -910,16 +922,16 @@ private struct EntryTile: View {
 
         // Prefer the kind the user is viewing; fall back to the other one
         // so cross-fallback still works.
-        let order: [MediaKind] = mediaKind == .snap ? [.snap, .coverArt] : [.coverArt, .snap]
+        let order: [MediaKind] = mediaKind == .snap ? [.snap, .flyers] : [.flyers, .snap]
         for kind in order {
             if await library.fetchOnlineMedia(for: entry, kind: kind) != nil { break }
         }
         snapURL = library.mediaURL(for: entry, kind: .snap)
-        coverURL = library.mediaURL(for: entry, kind: .coverArt)
+        coverURL = library.mediaURL(for: entry, kind: .flyers)
     }
 
     private func preferredImage() -> NSImage? {
-        let url: URL? = (mediaKind == .coverArt) ? coverURL : snapURL
+        let url: URL? = (mediaKind == .flyers) ? coverURL : snapURL
         guard let url else { return nil }
         return NSImage(contentsOf: url)
     }
@@ -940,7 +952,7 @@ private struct EntryTile: View {
     /// Famicom boxes.
     private var tileAspectRatio: CGFloat {
         switch mediaKind {
-        case .coverArt: return CoverArtAspectRatio.ratio(for: entry)
+        case .flyers: return FlyerAspectRatio.ratio(for: entry)
         case .snap: return SnapAspectRatio.ratio(for: entry)
         }
     }

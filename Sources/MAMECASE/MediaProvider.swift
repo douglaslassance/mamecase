@@ -37,7 +37,36 @@ actor MediaProvider {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
         self.cacheRoot = caches.appendingPathComponent("Mamecase/media", isDirectory: true)
         try? FileManager.default.createDirectory(at: cacheRoot, withIntermediateDirectories: true)
+        MediaProvider.migrateCoverArtToFlyers(in: cacheRoot)
         self.onlineMisses = MediaProvider.loadMisses(root: cacheRoot)
+    }
+
+    /// Pre-rename, the cache stored arcade flyer/boxart media under
+    /// `media/coverArt/`. Renaming to match MAME's "flyers" terminology
+    /// moves the folder to `media/flyers/` and rewrites the misses-file
+    /// keys so existing downloads survive the rename. Idempotent.
+    private static func migrateCoverArtToFlyers(in root: URL) {
+        let fm = FileManager.default
+        let oldDir = root.appendingPathComponent("coverArt", isDirectory: true)
+        let newDir = root.appendingPathComponent("flyers", isDirectory: true)
+        if fm.fileExists(atPath: oldDir.path),
+           !fm.fileExists(atPath: newDir.path) {
+            try? fm.moveItem(at: oldDir, to: newDir)
+        }
+        // Rewrite misses.json keys from `coverArt/...` → `flyers/...`.
+        let missesURL = missesFile(root: root)
+        if let data = try? Data(contentsOf: missesURL),
+           let decoded = try? JSONDecoder().decode([String].self, from: data) {
+            let migrated = decoded.map { key in
+                key.hasPrefix("coverArt/")
+                    ? "flyers/" + key.dropFirst("coverArt/".count)
+                    : key
+            }
+            if migrated != decoded,
+               let encoded = try? JSONEncoder().encode(migrated) {
+                try? encoded.write(to: missesURL, options: .atomic)
+            }
+        }
     }
 
     nonisolated func cacheDir(for kind: MediaKind) -> URL {
@@ -59,7 +88,7 @@ actor MediaProvider {
 
     /// Fetch the entry's media for `kind` online.
     ///   - Arcade: libretro-thumbnails MAME repo (works for both
-    ///     `coverArt` → flyer/boxart, and `snap` → in-game shot).
+    ///     `flyers` → flyer/boxart, and `snap` → in-game shot).
     ///   - Software cover art: libretro-thumbnails per-system repo via
     ///     `LibretroThumbnails` (index-on-first-use + fuzzy match).
     ///   - Software snap: no online source today; returns nil.
@@ -78,7 +107,7 @@ actor MediaProvider {
         case .arcade:
             candidates = libretroCandidates(for: entry, kind: kind)
         case .software:
-            guard kind == .coverArt,
+            guard kind == .flyers,
                   let url = await LibretroThumbnails.shared.coverURL(for: entry)
             else {
                 onlineMisses.insert(key)
@@ -135,7 +164,7 @@ actor MediaProvider {
         guard case .arcade = entry.kind else { return [] }
         let bucket: String
         switch kind {
-        case .coverArt: bucket = "Named_Boxarts"
+        case .flyers: bucket = "Named_Boxarts"
         case .snap: bucket = "Named_Snaps"
         }
         let display = entry.displayName
@@ -478,9 +507,9 @@ actor MediaProvider {
         switch (kind, entry.kind) {
         case (.snap, _):
             return config.snapPaths
-        case (.coverArt, .arcade):
+        case (.flyers, .arcade):
             return config.flyerPaths
-        case (.coverArt, .software):
+        case (.flyers, .software):
             return config.coverPaths
         }
     }
@@ -490,7 +519,7 @@ actor MediaProvider {
     private static func directories(forKind kind: MediaKind, config: MameConfig) -> [URL] {
         switch kind {
         case .snap: return config.snapPaths
-        case .coverArt: return config.flyerPaths + config.coverPaths
+        case .flyers: return config.flyerPaths + config.coverPaths
         }
     }
 

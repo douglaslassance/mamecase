@@ -14,16 +14,16 @@ enum MameConfigError: Error, LocalizedError {
 
 enum MameConfigLoader {
     static func load(settings: SettingsSnapshot) throws -> MameConfig {
+        let ini = settings.resolvedMameIni
         let mameHome = settings.resolvedMameHome
-        let ini = mameHome.appendingPathComponent("mame.ini")
 
         let values = (try? parseIni(at: ini)) ?? [:]
 
-        let iniRomPaths = resolvePaths(values["rompath"] ?? "roms", base: mameHome)
-        let userRomPaths = settings.additionalRomPaths.map { expand($0, base: mameHome) }
-
-        // Combine order: user settings, then mame.ini. De-duped by resolved path.
-        let romPaths = dedupePreservingOrder(userRomPaths + iniRomPaths)
+        // ROM paths come straight from mame.ini's `rompath` line — Mamecase
+        // doesn't merge in any side-channel list any more.
+        let romPaths = dedupePreservingOrder(
+            resolvePaths(values["rompath"] ?? "roms", base: mameHome)
+        )
 
         let hashPaths = resolvePaths(values["hashpath"] ?? "hash", base: mameHome)
         let swPaths = resolvePaths(values["swpath"] ?? "software", base: mameHome)

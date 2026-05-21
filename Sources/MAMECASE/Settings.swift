@@ -5,25 +5,23 @@ import SwiftUI
 @MainActor
 final class AppSettings: ObservableObject {
     private enum Keys {
-        static let mameHomePath = "mameHomePath"
+        static let mameIniPath = "mameIniPath"
         static let mameExecutablePath = "mameExecutablePath"
-        static let additionalRomPaths = "additionalRomPaths"
         static let romDownloadBaseURL = "romDownloadBaseURL"
     }
 
-    static var defaultMameHomePath: String { AppSettingsDefaults.mameHomePath }
+    static var defaultMameIniPath: String { AppSettingsDefaults.mameIniPath }
     static var defaultMameExecutablePath: String { AppSettingsDefaults.mameExecutablePath }
 
-    @Published var mameHomePath: String {
-        didSet { UserDefaults.standard.set(mameHomePath, forKey: Keys.mameHomePath) }
+    /// Full path to the user's `mame.ini` file. The directory it sits in
+    /// is treated as MAME's home dir for resolving relative paths
+    /// (`rompath roms` → `<dir>/roms`, `hashpath hash` → `<dir>/hash`, …).
+    @Published var mameIniPath: String {
+        didSet { UserDefaults.standard.set(mameIniPath, forKey: Keys.mameIniPath) }
     }
 
     @Published var mameExecutablePath: String {
         didSet { UserDefaults.standard.set(mameExecutablePath, forKey: Keys.mameExecutablePath) }
-    }
-
-    @Published var additionalRomPaths: [String] {
-        didSet { UserDefaults.standard.set(additionalRomPaths, forKey: Keys.additionalRomPaths) }
     }
 
     @Published var romDownloadBaseURL: String {
@@ -32,26 +30,19 @@ final class AppSettings: ObservableObject {
 
     init() {
         let defaults = UserDefaults.standard
-        // Empty string means "use the default" — the TextField will show the
-        // default as placeholder text, and the loader falls back accordingly.
-        self.mameHomePath = defaults.string(forKey: Keys.mameHomePath) ?? ""
+        // Empty string means "use the default" — the TextField will show
+        // the default as placeholder text, and the loader falls back
+        // accordingly.
+        self.mameIniPath = defaults.string(forKey: Keys.mameIniPath) ?? ""
         self.mameExecutablePath = defaults.string(forKey: Keys.mameExecutablePath) ?? ""
-        self.additionalRomPaths = (defaults.array(forKey: Keys.additionalRomPaths) as? [String]) ?? []
         self.romDownloadBaseURL = defaults.string(forKey: Keys.romDownloadBaseURL) ?? ""
-    }
-
-    /// Resolved ~/.mame URL from `mameHomePath`. Expands `~`.
-    var resolvedMameHome: URL {
-        let expanded = (mameHomePath as NSString).expandingTildeInPath
-        return URL(fileURLWithPath: expanded, isDirectory: true)
     }
 
     /// Snapshot for passing to non-MainActor code.
     func snapshot() -> SettingsSnapshot {
         SettingsSnapshot(
-            mameHomePath: mameHomePath,
+            mameIniPath: mameIniPath,
             mameExecutablePath: mameExecutablePath,
-            additionalRomPaths: additionalRomPaths,
             romDownloadBaseURL: romDownloadBaseURL
         )
     }
@@ -60,7 +51,7 @@ final class AppSettings: ObservableObject {
 /// Default values, kept outside the MainActor-isolated class so they can be
 /// referenced from any context (e.g. the loader).
 enum AppSettingsDefaults {
-    static let mameHomePath = "~/.mame"
+    static let mameIniPath = "~/.mame/mame.ini"
     static let mameExecutablePath = "mame"
     // The archive.org `mame-merged` collection matches the
     // `<shortname>.zip` convention this code expects:
@@ -73,14 +64,13 @@ enum AppSettingsDefaults {
 /// Stored values may be empty strings, meaning "use the default". The
 /// `effective*` properties apply that fallback so callers don't have to.
 struct SettingsSnapshot {
-    let mameHomePath: String
+    let mameIniPath: String
     let mameExecutablePath: String
-    let additionalRomPaths: [String]
     let romDownloadBaseURL: String
 
-    var effectiveMameHomePath: String {
-        let trimmed = mameHomePath.trimmingCharacters(in: .whitespaces)
-        return trimmed.isEmpty ? AppSettingsDefaults.mameHomePath : trimmed
+    var effectiveMameIniPath: String {
+        let trimmed = mameIniPath.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? AppSettingsDefaults.mameIniPath : trimmed
     }
 
     var effectiveMameExecutablePath: String {
@@ -94,8 +84,15 @@ struct SettingsSnapshot {
         romDownloadBaseURL.trimmingCharacters(in: .whitespaces)
     }
 
+    /// Resolved `mame.ini` URL with `~` expanded.
+    var resolvedMameIni: URL {
+        let expanded = (effectiveMameIniPath as NSString).expandingTildeInPath
+        return URL(fileURLWithPath: expanded)
+    }
+
+    /// Directory containing the mame.ini file — used as MAME's home for
+    /// resolving relative paths in the ini.
     var resolvedMameHome: URL {
-        let expanded = (effectiveMameHomePath as NSString).expandingTildeInPath
-        return URL(fileURLWithPath: expanded, isDirectory: true)
+        resolvedMameIni.deletingLastPathComponent()
     }
 }

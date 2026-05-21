@@ -43,7 +43,7 @@ struct ContentView: View {
     @AppStorage("showMissingFiles") private var showMissing: Bool = false
     @AppStorage("showFavoritesOnly") private var showFavoritesOnly: Bool = false
     @AppStorage("showFailingOnly") private var showFailingOnly: Bool = false
-    @AppStorage("mediaKind") private var mediaKind: MediaKind = .coverArt
+    @AppStorage("mediaKind") private var mediaKind: MediaKind = .flyers
     @AppStorage("gridItemSize") private var gridItemSize: Double = 180
     @AppStorage("showStatusBar") private var showStatusBar: Bool = true
     @AppStorage("showInspector") private var showInspector: Bool = false

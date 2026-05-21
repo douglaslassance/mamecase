@@ -166,7 +166,7 @@ final class Library: ObservableObject {
             // Kick off archive extraction for media packs (snap.7z,
             // flyers.zip, etc.). No-op if the user has only loose files.
             requestMediaExtraction(for: .snap)
-            requestMediaExtraction(for: .coverArt)
+            requestMediaExtraction(for: .flyers)
 
             await loadSoftwareLists(cfg: cfg)
             rebuildPresence()
@@ -355,44 +355,16 @@ final class Library: ObservableObject {
         presence = nextPresence
     }
 
-    /// Light refresh after only ROM paths changed: reload config, rebuild the
-    /// presence index, and retag ownership. Does NOT re-parse software list
-    /// XMLs (the expensive part of a full reload).
-    func refreshRomPaths(settings: AppSettings) {
-        let snapshot = settings.snapshot()
-        do {
-            let cfg = try MameConfigLoader.load(settings: snapshot)
-            self.config = cfg
-            rebuildControllerSchemes()
-            rebuildShaderSchemes()
-            rebuildPresence()
-            tagSoftwareOwnership()
-            tagArcadeOwnership()
-        } catch {
-            self.loadError = error.localizedDescription
-        }
-    }
-
     /// Subscribe to Settings changes so the library reacts automatically.
-    /// Debounced so typing in a text field doesn't fire work on every keystroke.
+    /// Debounced so typing in a text field doesn't fire work on every
+    /// keystroke. Now that ROM paths come exclusively from mame.ini,
+    /// we just watch the two settings fields that warrant a full reload.
     func observe(settings: AppSettings) {
         settingsCancellables.removeAll()
 
-        // ROM-paths-only changes: cheap refresh (no XML reparse).
-        settings.$additionalRomPaths
-            .dropFirst()
-            .removeDuplicates()
-            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
-            .sink { [weak self] _ in
-                guard let self else { return }
-                self.refreshRomPaths(settings: settings)
-            }
-            .store(in: &settingsCancellables)
-
-        // Home/executable changes: full reload.
-        let home = settings.$mameHomePath.dropFirst().removeDuplicates().map { _ in () }
+        let ini = settings.$mameIniPath.dropFirst().removeDuplicates().map { _ in () }
         let exe = settings.$mameExecutablePath.dropFirst().removeDuplicates().map { _ in () }
-        Publishers.Merge(home, exe)
+        Publishers.Merge(ini, exe)
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self else { return }
@@ -667,7 +639,7 @@ final class Library: ObservableObject {
             sevenZipMissing = false
             // Retry whichever media kinds were waiting.
             requestMediaExtraction(for: .snap)
-            requestMediaExtraction(for: .coverArt)
+            requestMediaExtraction(for: .flyers)
         } else {
             loadError = "Homebrew install failed (exit code \(code))."
         }
@@ -873,10 +845,12 @@ final class Library: ObservableObject {
 
     // MARK: - ROM downloads
 
-    /// Where a freshly-downloaded ROM should land. We prefer the first
-    /// writable directory in the configured `romPaths`; if none exist or
-    /// are writable, fall back to `~/Downloads/roms` (matching the user's
-    /// original Python script).
+    /// Where a freshly-downloaded ROM should land. First writable
+    /// directory from mame.ini's `rompath`, full stop — Mamecase used
+    /// to fall back to `~/Downloads/roms` if nothing writable existed,
+    /// but that just leaves the file in a place MAME can't see. If the
+    /// rompath isn't writable, the download is refused so the user
+    /// notices and fixes their config.
     func downloadDestination(for entry: Entry) -> URL? {
         guard case .arcade = entry.kind else { return nil }
         guard let cfg = config else { return nil }
@@ -889,12 +863,7 @@ final class Library: ObservableObject {
                 return dir.appendingPathComponent("\(entry.shortName).zip")
             }
         }
-        guard let downloads = fm.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
-            return nil
-        }
-        let dir = downloads.appendingPathComponent("roms", isDirectory: true)
-        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("\(entry.shortName).zip")
+        return nil
     }
 
     /// Download all arcade entries sequentially. Software entries are
