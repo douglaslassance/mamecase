@@ -336,6 +336,13 @@ struct ContentView: View {
 
     /// Pick a sidebar selection automatically: restore the last-used system
     /// if it still exists, otherwise fall back to the first available.
+    /// The trick is that `.onAppear` runs before the library has parsed
+    /// software lists, so `sidebarSystems` initially only contains the
+    /// always-present library cross-systems (All / Recent). If we
+    /// auto-picked the first node here, the `.onChange(of: selection)`
+    /// handler would persist that default and clobber the user's saved
+    /// pick. So while the library is still loading, we wait for the
+    /// persisted node to materialise rather than commit to a fallback.
     private func restoreSelectionIfNeeded(in nodes: [SystemNode]) {
         guard !nodes.isEmpty else { return }
         if let current = selection, nodes.contains(where: { $0.id == current }) {
@@ -344,9 +351,12 @@ struct ContentView: View {
         if !persistedSystemID.isEmpty,
            nodes.contains(where: { $0.id == persistedSystemID }) {
             selection = persistedSystemID
-        } else {
-            selection = nodes.first?.id
+            return
         }
+        if !persistedSystemID.isEmpty, library.isLoading {
+            return
+        }
+        selection = nodes.first?.id
     }
 
     private var sidebar: some View {
