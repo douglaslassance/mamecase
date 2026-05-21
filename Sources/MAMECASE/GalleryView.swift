@@ -136,14 +136,18 @@ struct GalleryView: View {
                 } description: {
                     Text(emptyHint)
                 } actions: {
-                    if hideMissing {
-                        Button("Show Missing") { enableShowMissing() }
-                    }
+                    // Tiered: Clear Filters takes priority. If clearing
+                    // them wouldn't help (no filters active), offer
+                    // Show Missing as the next escape hatch. Showing
+                    // both at once felt noisy — the user wants one
+                    // obvious next step at a time.
                     if hasActiveFilters {
                         Button("Clear Filters") {
                             clearFilters()
                             searchText = ""
                         }
+                    } else if hideMissing {
+                        Button("Show Missing") { enableShowMissing() }
                     }
                 }
             }
@@ -650,21 +654,21 @@ struct GalleryView: View {
     }
 
     private var emptyHint: String {
+        if hasActiveFilters {
+            return "Nothing matches the current filters."
+        }
+        if hideMissing {
+            return "Missing games are hidden."
+        }
         switch system.kind {
+        case .cross(.recent):
+            return "Nothing launched yet."
+        case .cross(.playlist):
+            return "This playlist is empty."
         case .arcade where library.arcadeEntries.isEmpty:
-            return "Click ‘Index Arcade’ to scan."
-        case .arcade:
-            return hideMissing ? "No ROMs found in your rompath. Turn off ‘Hide missing’ to browse all."
-                               : "No arcade entries match your search."
-        case .software:
-            return hideMissing ? "No ROMs for this system in your rompath. Turn off ‘Hide missing’ to browse all."
-                               : "Nothing matched your search."
-        case .cross(let scope):
-            switch scope {
-            case .all: return "No entries found."
-            case .recent: return "No recently launched games yet."
-            case .playlist: return "Add games to this playlist from the gallery."
-            }
+            return "The arcade catalogue hasn't been indexed yet."
+        default:
+            return "Nothing here yet."
         }
     }
 
