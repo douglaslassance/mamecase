@@ -96,7 +96,11 @@ struct ContentView: View {
     @ViewBuilder
     private func sidebarRow(_ node: SystemNode) -> some View {
         HStack {
-            Text(node.displayName).lineLimit(1)
+            Label {
+                Text(node.displayName).lineLimit(1)
+            } icon: {
+                Image(systemName: node.kind.sidebarIcon)
+            }
             Spacer()
             Text("\(filteredCount(for: node))")
                 .font(.caption.monospacedDigit())
@@ -347,7 +351,9 @@ struct ContentView: View {
 
     private var sidebar: some View {
         List(selection: $selection) {
-            Section("Library") {
+            // No section header for the top group — matches the iTunes /
+            // Finder sidebar idiom where the first batch is unlabeled.
+            Section {
                 ForEach(librarySystems) { node in sidebarRow(node) }
             }
             if !systems.isEmpty {

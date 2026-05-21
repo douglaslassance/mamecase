@@ -12,6 +12,12 @@ struct Entry: Identifiable, Hashable, Sendable {
     let displayName: String
     let year: String?
     let publisher: String?
+    /// Disk-name strings from MAME's `<disk name="…">` elements (one per
+    /// disc for the entry). For disc-based systems MAME accepts files
+    /// named after the disk-name directly under `<rompath>/<system>/`,
+    /// so we use these as alternate filenames during presence detection
+    /// and ROM lookup. Empty for arcade and cartridge-only entries.
+    var diskNames: [String] = []
     var owned: Bool = false
 
     var id: String {
@@ -112,6 +118,23 @@ struct SystemNode: Identifiable, Hashable {
         var isCrossSystem: Bool {
             if case .cross = self { return true }
             return false
+        }
+
+        /// SF Symbol used in the sidebar — one icon per node "shape"
+        /// rather than per system. Software lists use a generic
+        /// cartridge symbol whether they're cartridge- or disc-based,
+        /// since matching every console to its own glyph isn't tractable.
+        var sidebarIcon: String {
+            switch self {
+            case .arcade: return "gamecontroller.fill"
+            case .software: return "memorychip.fill"
+            case .cross(let scope):
+                switch scope {
+                case .all: return "rectangle.stack.fill"
+                case .recent: return "clock.fill"
+                case .playlist: return "play.square.fill"
+                }
+            }
         }
     }
 

@@ -14,6 +14,11 @@ final class SoftwareListParser: NSObject, XMLParserDelegate {
     private var currentDescription: String?
     private var currentYear: String?
     private var currentPublisher: String?
+    /// Disk names declared by the current `<software>` (one per `<disk>`
+    /// element inside `<diskarea>`). For disc-based systems (PSX, Saturn,
+    /// Dreamcast) this is what MAME actually expects on disk — e.g.
+    /// `sat-0834-guardian_heroes-usa` rather than the shortname `guardheru`.
+    private var currentDiskNames: [String] = []
     private var currentText: String = ""
     private var currentElement: String = ""
 
@@ -53,6 +58,11 @@ final class SoftwareListParser: NSObject, XMLParserDelegate {
             currentDescription = nil
             currentYear = nil
             currentPublisher = nil
+            currentDiskNames = []
+        case "disk":
+            if let n = attributeDict["name"], !n.isEmpty {
+                currentDiskNames.append(n)
+            }
         default: break
         }
     }
@@ -79,10 +89,12 @@ final class SoftwareListParser: NSObject, XMLParserDelegate {
                     shortName: name,
                     displayName: currentDescription ?? name,
                     year: currentYear,
-                    publisher: currentPublisher
+                    publisher: currentPublisher,
+                    diskNames: currentDiskNames
                 ))
             }
             currentSoftwareName = nil
+            currentDiskNames = []
         default: break
         }
         currentText = ""

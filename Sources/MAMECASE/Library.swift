@@ -397,8 +397,8 @@ final class Library: ObservableObject {
 
     private func rebuildPresence() {
         guard let cfg = config else { return }
-        let known = Set(softwareLists.map(\.name))
-        self.presence = PresenceIndex.build(romPaths: cfg.romPaths, knownSoftwareSystems: known)
+        self.presence = PresenceIndex.build(romPaths: cfg.romPaths,
+                                            softwareLists: softwareLists)
     }
 
     private func tagSoftwareOwnership() {
