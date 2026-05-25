@@ -1,5 +1,8 @@
 import SwiftUI
 import AppKit
+#if !APPSTORE_BUILD
+import Sparkle
+#endif
 
 @main
 struct MamecaseApp: App {
@@ -7,6 +10,19 @@ struct MamecaseApp: App {
     @StateObject private var settings = AppSettings()
     @AppStorage("showStatusBar") private var showStatusBar: Bool = true
     @AppStorage("showInspector") private var showInspector: Bool = false
+    #if !APPSTORE_BUILD
+    private let updaterController = SPUStandardUpdaterController(
+        startingUpdater: {
+            #if DEBUG
+            return false  // Sparkle keys aren't in the dev Info.plist
+            #else
+            return true
+            #endif
+        }(),
+        updaterDelegate: nil,
+        userDriverDelegate: nil
+    )
+    #endif
 
     init() {
         // Without a proper .app bundle, an SPM executable defaults to a
@@ -31,6 +47,14 @@ struct MamecaseApp: App {
         .commands {
             // Mamecase is single-window; drop the default "New Window" item.
             CommandGroup(replacing: .newItem) { }
+            #if !APPSTORE_BUILD && !DEBUG
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesView(
+                    viewModel: CheckForUpdatesViewModel(updater: updaterController.updater),
+                    updater: updaterController.updater
+                )
+            }
+            #endif
             CommandMenu("View") {
                 Toggle("Inspector", isOn: $showInspector)
                     .keyboardShortcut("i", modifiers: [.command, .option])
