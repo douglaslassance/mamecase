@@ -3,8 +3,8 @@
 // `gamecontroller.fill` SF Symbol centered in near-black. Produces all
 // PNGs required by an `.iconset` directory.
 //
-// Usage (driven by scripts/bundle.sh):
-//   swift scripts/render_icon.swift <output-iconset-dir>
+// Usage (driven by bundle.sh):
+//   swift render_icon.swift <output-iconset-dir>
 
 import AppKit
 import Foundation

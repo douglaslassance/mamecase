@@ -3,12 +3,12 @@
 # Run from anywhere; cd into the project root first.
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")"
 
 APP_NAME="Mamecase"
-BUNDLE_ID="com.dlassance.mamecase"
-VERSION="0.1.0"
-BUILD="1"
+BUNDLE_ID="me.douglaslassance.mamecase"
+VERSION="${1:-$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")}"
+BUILD="$VERSION"
 
 BUILD_DIR=".build/release"
 APP_DIR="$APP_NAME.app"
@@ -56,7 +56,7 @@ fi
 
 echo "▸ rendering app icon"
 rm -rf "$ICONSET"
-swift scripts/render_icon.swift "$ICONSET"
+swift render_icon.swift "$ICONSET"
 iconutil --convert icns "$ICONSET" --output "$RESOURCES/AppIcon.icns"
 rm -rf "$ICONSET"
 
