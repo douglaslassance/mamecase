@@ -4,4 +4,4 @@ on: pull_request
 
 jobs:
   ci:
-    uses: douglaslassance/catapult/.github/workflows/ci.yml@37720adb22445a6d93fc31cf8c4332d934bd5ff9
+    uses: douglaslassance/catapult/.github/workflows/ci.yml@5480a2b9f431207253f908ffa4f31e4d164d1b24
