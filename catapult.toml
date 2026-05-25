@@ -1,5 +1,5 @@
-# Release configuration consumed by ../trigger.
-# Schema: trigger/templates/trigger.toml.example
+# Release configuration consumed by ./catapult.
+# Schema: catapult/templates/catapult.toml.example
 
 [app]
 name        = "Mamecase"
