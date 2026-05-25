@@ -1,0 +1,28 @@
+# Release configuration consumed by ../trigger.
+# Schema: trigger/templates/trigger.toml.example
+
+[app]
+name        = "Mamecase"
+slug        = "mamecase"
+bundle_id   = "me.douglaslassance.mamecase"
+team_id     = "556XHQJK3G"
+developer   = "Douglas Lassance"
+homepage    = "https://github.com/douglaslassance/mamecase"
+description = "MAME front-end for macOS"
+category    = "public.app-category.entertainment"
+min_macos   = "14.0"
+
+[build]
+kind          = "swift"
+arch          = "arm64"
+target_triple = "aarch64-apple-darwin"
+swift_target  = "Mamecase"
+icon_command  = "swift render_icon.swift build/icon.iconset && iconutil -c icns build/icon.iconset -o build/AppIcon.icns"
+
+[r2]
+bucket_prefix         = "mamecase"
+appcast_filename      = "mamecase.xml"
+download_url_template = "https://api.douglaslassance.me/mamecase/download/{version}/{target}"
+
+[homebrew]
+cask_name = "mamecase"

@@ -1,0 +1,3 @@
+[submodule "trigger"]
+	path = trigger
+	url = https://github.com/douglaslassance/trigger.git
