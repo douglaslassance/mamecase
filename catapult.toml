@@ -1,5 +1,5 @@
 # Release configuration consumed by ./catapult.
-# Schema: catapult/templates/catapult.toml.example
+# Schema: catapult/catapult.toml.example
 
 [app]
 name        = "Mamecase"
