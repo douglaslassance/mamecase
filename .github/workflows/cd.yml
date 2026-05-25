@@ -8,7 +8,7 @@ on:
 
 jobs:
   release:
-    uses: douglaslassance/trigger/.github/workflows/release.yml@39faa14d748488ab411fe2c0fe4588f22eb711e6
+    uses: douglaslassance/catapult/.github/workflows/release.yml@37720adb22445a6d93fc31cf8c4332d934bd5ff9
     secrets: inherit
     with:
       channels: "direct,homebrew"
