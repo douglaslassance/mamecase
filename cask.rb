@@ -20,7 +20,7 @@ cask "mamecase" do
 
   zap trash: [
     "~/Library/Application Support/Mamecase",
-    "~/Library/Caches/me.douglaslassance.mamecase",
+    "~/Library/Caches/Mamecase",
     "~/Library/Preferences/me.douglaslassance.mamecase.plist",
   ]
 end
