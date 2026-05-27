@@ -1,7 +1,0 @@
-name: CI
-
-on: pull_request
-
-jobs:
-  ci:
-    uses: douglaslassance/catapult/.github/workflows/ci.yml@ce9443f76eb249f8de62fbca1c9aa52e7349ca87
