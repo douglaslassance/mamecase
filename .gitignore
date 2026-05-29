@@ -5,4 +5,5 @@
 Package.resolved
 Mamecase.app/
 dist/
+build/
 .env
