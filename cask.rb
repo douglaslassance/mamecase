@@ -2,11 +2,10 @@ cask "mamecase" do
   version "{{VERSION}}"
   sha256 "{{SHA256}}"
 
-  url "https://api.douglaslassance.me/mamecase/download/#{version}/aarch64-apple-darwin",
-      verified: "api.douglaslassance.me/mamecase/"
+  url "https://api.douglaslassance.me/mamecase/download/#{version}/aarch64-apple-darwin"
   name "Mamecase"
   desc "MAME front-end"
-  homepage "https://github.com/douglaslassance/mamecase"
+  homepage "https://mamecase.douglaslassance.me/"
 
   livecheck do
     url "https://api.douglaslassance.me/mamecase"
