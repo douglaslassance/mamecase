@@ -4,7 +4,7 @@ cask "mamecase" do
 
   url "https://api.douglaslassance.me/mamecase/download/#{version}/aarch64-apple-darwin"
   name "Mamecase"
-  desc "MAME front-end for macOS"
+  desc "MAME front-end"
   homepage "https://github.com/douglaslassance/mamecase"
 
   livecheck do
@@ -14,7 +14,7 @@ cask "mamecase" do
     end
   end
 
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   app "Mamecase.app"
 
