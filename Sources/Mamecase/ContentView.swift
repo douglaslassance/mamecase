@@ -1,29 +1,5 @@
 import SwiftUI
 
-/// Toolbar gear button that opens the Settings scene and shows a red
-/// badge dot when a MAME update is available (brew-managed only).
-private struct SettingsToolbarButton: View {
-    let updateAvailable: Bool
-    @Environment(\.openSettings) private var openSettings
-
-    var body: some View {
-        Button {
-            openSettings()
-        } label: {
-            Image(systemName: "gearshape")
-                .overlay(alignment: .topTrailing) {
-                    if updateAvailable {
-                        Circle()
-                            .fill(Color.red)
-                            .frame(width: 7, height: 7)
-                            .offset(x: 3, y: -3)
-                    }
-                }
-        }
-        .help(updateAvailable ? "Settings — MAME update available" : "Settings")
-    }
-}
-
 /// `Label` style that mirrors macOS toolbar layout but with breathable
 /// spacing between the icon and the title. Default `.titleAndIcon`
 /// gives a too-tight gap once the icon is an SF Symbol with intrinsic
@@ -268,19 +244,6 @@ struct ContentView: View {
                 }
                 .help("GLSL shader override (slot 1)")
                 .disabled(library.shaderSchemes.isEmpty)
-            }
-            ToolbarItem(id: "settings", placement: .primaryAction) {
-                SettingsToolbarButton(updateAvailable: library.mameUpdateAvailable)
-            }
-            ToolbarItem(id: "support", placement: .primaryAction) {
-                Button {
-                    if let url = URL(string: "https://ko-fi.com/douglaslassance") {
-                        NSWorkspace.shared.open(url)
-                    }
-                } label: {
-                    Image(systemName: "cup.and.saucer")
-                }
-                .help("Support Mamecase on Ko-fi")
             }
         }
         .alert("Error",
