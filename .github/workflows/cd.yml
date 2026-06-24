@@ -8,7 +8,7 @@ on:
 
 jobs:
   release:
-    uses: douglaslassance/catapult/.github/workflows/release.yml@bee1864e75ff0197b8d4418825954bd7f7f8c470
+    uses: douglaslassance/catapult/.github/workflows/release.yml@09ea01657cb3dad25f2a70b2e02dc4f85ae2e687
     secrets: inherit
     with:
       channels: "s3,homebrew"
