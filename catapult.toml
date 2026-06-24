@@ -20,7 +20,7 @@ swift_target  = "Mamecase"
 icon_command  = "swift render_icon.swift build/icon.iconset && iconutil -c icns build/icon.iconset -o build/AppIcon.icns"
 
 [sparkle]
-feed_url = "https://storage.douglaslassance.me/mamecase/mamecase.xml"
+feed_url = "https://s3.douglaslassance.me/mamecase/mamecase.xml"
 
 [s3]
 bucket_prefix         = "mamecase"
