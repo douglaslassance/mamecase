@@ -85,6 +85,7 @@ struct MamecaseApp: App {
         WindowGroup("About Mamecase", id: "about") {
             AboutView()
         }
+        .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
         .defaultPosition(.center)
     }
