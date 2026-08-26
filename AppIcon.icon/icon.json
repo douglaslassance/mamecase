@@ -1,0 +1,43 @@
+{
+  "fill" : {
+    "automatic-gradient" : "srgb:0.96000,0.96000,0.97000,1.00000"
+  },
+  "groups" : [
+    {
+      "hidden" : false,
+      "layers" : [
+        {
+          "fill" : {
+            "solid" : "srgb:0.11000,0.11000,0.12000,1.00000"
+          },
+          "glass" : false,
+          "hidden" : false,
+          "image-name" : "gamecontroller.png",
+          "name" : "Gamecontroller",
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "name" : "Gamecontroller",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.35
+      },
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}

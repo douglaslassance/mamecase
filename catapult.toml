@@ -17,7 +17,7 @@ kind          = "swift"
 arch          = "arm64"
 target_triple = "aarch64-apple-darwin"
 swift_target  = "Mamecase"
-icon_command  = "swift render_icon.swift build/icon.iconset && iconutil -c icns build/icon.iconset -o build/AppIcon.icns"
+icon_command  = "./build_icons.sh"
 
 [sparkle]
 feed_url = "https://s3.douglaslassance.me/mamecase/mamecase.xml"
@@ -29,3 +29,9 @@ download_url_template = "https://api.douglaslassance.me/mamecase/download/{versi
 
 [homebrew]
 cask_name = "mamecase"
+
+[plist.extras]
+# Points macOS 26 at the adaptive icon in build/Assets.car, which carries the
+# light, dark and tinted renditions. Older macOS ignores it and uses
+# AppIcon.icns.
+CFBundleIconName = "AppIcon"
