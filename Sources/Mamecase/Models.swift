@@ -20,10 +20,30 @@ struct Entry: Identifiable, Hashable, Sendable {
     var diskNames: [String] = []
     var owned: Bool = false
 
-    var id: String {
+    /// Built once at construction rather than recomputed on access. The
+    /// gallery reads `id` for every entry on every re-render (ForEach
+    /// identity plus the selection and favourites lookups), so a
+    /// computed property here meant tens of thousands of string
+    /// allocations per frame while the window was being resized.
+    let id: String
+
+    init(kind: EntryKind,
+         shortName: String,
+         displayName: String,
+         year: String?,
+         publisher: String?,
+         diskNames: [String] = [],
+         owned: Bool = false) {
+        self.kind = kind
+        self.shortName = shortName
+        self.displayName = displayName
+        self.year = year
+        self.publisher = publisher
+        self.diskNames = diskNames
+        self.owned = owned
         switch kind {
-        case .arcade: return "arcade/\(shortName)"
-        case .software(let sys): return "\(sys)/\(shortName)"
+        case .arcade: self.id = "arcade/\(shortName)"
+        case .software(let sys): self.id = "\(sys)/\(shortName)"
         }
     }
 }
