@@ -179,6 +179,14 @@ struct GalleryView: View {
     private func galleryContent(containerWidth: CGFloat) -> some View {
         let pad = CGFloat(itemSpacing)
         let inner = max(0, containerWidth - pad * 2)
+        // Aspect ratios only change when the media on disk or a measured
+        // image size changes — never when the window width does. Drop the
+        // memo here (once per layout pass) rather than re-resolving every
+        // entry's ratio on every resize frame.
+        let _ = ArtworkAspectCache.shared.invalidate(
+            ifChanged: AspectSignature(mediaGeneration: library.mediaGeneration,
+                                       sizeGeneration: imageSizes.generation,
+                                       mediaKind: entryMediaPreference))
         VStack(alignment: .leading, spacing: 0) {
             switch layoutMode {
             case .verticalMasonry:
@@ -236,6 +244,10 @@ struct GalleryView: View {
     ///      box rather than inherit a portrait per-system shape.
     ///   3. per-system convention while we wait for the size to stream in.
     private func artworkAspect(for entry: Entry) -> CGFloat {
+        ArtworkAspectCache.shared.aspect(for: entry, resolve: resolveArtworkAspect)
+    }
+
+    private func resolveArtworkAspect(for entry: Entry) -> CGFloat {
         let url = library.mediaURL(for: entry, kind: entryMediaPreference)
         guard let url else { return 1.0 }
         if let size = imageSizes.size(for: url), size.height > 0 {
@@ -961,6 +973,12 @@ private struct EntryTile: View {
         // to look for, so the cached miss from the first pass is stale.
         snapURL = library.refreshMediaURL(for: entry, kind: .snap)
         coverURL = library.refreshMediaURL(for: entry, kind: .flyers)
+        // Measuring the new file is what eventually bumps
+        // `ImageSizeCache.generation`, which is the gallery's cue to drop
+        // its memoized aspect ratios and re-lay-out around the art we
+        // just pulled down. Without this nudge the entry would keep the
+        // per-system fallback ratio until something else invalidated.
+        if let url = preferredURL { _ = ImageSizeCache.shared.size(for: url) }
         await loadArtwork()
     }
 
@@ -1011,5 +1029,44 @@ private struct EntryTile: View {
         case .flyers: return FlyerAspectRatio.ratio(for: entry)
         case .snap: return SnapAspectRatio.ratio(for: entry)
         }
+    }
+}
+
+/// What an entry's artwork aspect ratio depends on. Anything else the
+/// gallery re-renders for — window width above all — leaves the ratios
+/// untouched.
+struct AspectSignature: Equatable {
+    let mediaGeneration: Int
+    let sizeGeneration: Int
+    let mediaKind: MediaKind
+}
+
+/// Memo over `GalleryView.resolveArtworkAspect`.
+///
+/// The masonry layouts need a ratio for *every* entry to place tiles, so
+/// they call the resolver once per entry per layout pass, and a live
+/// resize runs a layout pass per frame. Resolving means a media-URL
+/// lookup plus an `ImageSizeCache` probe — cheap individually, but not
+/// 10k times a frame.
+@MainActor
+final class ArtworkAspectCache {
+    static let shared = ArtworkAspectCache()
+
+    private var signature: AspectSignature?
+    private var values: [Entry.ID: CGFloat] = [:]
+
+    /// Clears the memo when `signature` differs from the one it was
+    /// filled under. Cheap enough to call on every layout pass.
+    func invalidate(ifChanged signature: AspectSignature) {
+        guard signature != self.signature else { return }
+        self.signature = signature
+        values.removeAll(keepingCapacity: true)
+    }
+
+    func aspect(for entry: Entry, resolve: (Entry) -> CGFloat) -> CGFloat {
+        if let hit = values[entry.id] { return hit }
+        let aspect = resolve(entry)
+        values[entry.id] = aspect
+        return aspect
     }
 }
