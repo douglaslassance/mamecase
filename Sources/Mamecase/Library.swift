@@ -19,16 +19,16 @@ private extension String {
 @MainActor
 final class Library: ObservableObject {
     @Published var config: MameConfig?
-    @Published var softwareLists: [SoftwareList] = []
-    @Published var arcadeEntries: [Entry] = []
+    @Published var softwareLists: [SoftwareList] = [] { didSet { invalidateEntryCaches() } }
+    @Published var arcadeEntries: [Entry] = [] { didSet { invalidateEntryCaches() } }
     @Published var loadError: String?
     @Published var isLoading = false
     @Published var arcadeIndexing = false
     @Published var arcadeStatus: String?
-    @Published var presence: PresenceIndex = .empty
+    @Published var presence: PresenceIndex = .empty { didSet { invalidateEntryCaches() } }
     @Published var controllerSchemes: [String] = []
     @Published var shaderSchemes: [String] = []
-    @Published var verifications: [Entry.ID: RomStatus] = [:]
+    @Published var verifications: [Entry.ID: RomStatus] = [:] { didSet { invalidateEntryCaches() } }
     /// Per-entry tooltip detail string captured from the audit output
     /// (e.g. "ROM xxx: BAD CRC"). Populated alongside `verifications`.
     @Published var verificationDetails: [Entry.ID: String] = [:]
@@ -37,12 +37,12 @@ final class Library: ObservableObject {
     /// round-trip with MAME's OSD. We populate this set during `load()`
     /// once mame.ini has been parsed (it tells us where to look). The
     /// UserDefaults entries pre-migration get carried over there too.
-    @Published var favorites: Set<Entry.ID> = []
+    @Published var favorites: Set<Entry.ID> = [] { didSet { invalidateEntryCaches() } }
     /// Entry IDs in launch order, most recent first. Populated by
     /// `launch(_:)`; persisted in Phase 4.
-    @Published var recentlyLaunched: [Entry.ID] = RecentsStore.load()
+    @Published var recentlyLaunched: [Entry.ID] = RecentsStore.load() { didSet { invalidateEntryCaches() } }
     /// User-curated lists of entries. Persisted as JSON.
-    @Published var playlists: [Playlist] = PlaylistsStore.load()
+    @Published var playlists: [Playlist] = PlaylistsStore.load() { didSet { invalidateEntryCaches() } }
     @Published var isVerifyingAll: Bool = false
     /// In-memory mirror of `verifications.json` so we can decide cache hits
     /// without touching disk on every entry.
@@ -69,6 +69,43 @@ final class Library: ObservableObject {
     @Published private(set) var mediaGeneration: Int = 0
 
     private var settingsCancellables: Set<AnyCancellable> = []
+
+    // MARK: - Gallery memo caches
+    //
+    // The gallery rebuilds its entry list from `body`, and `body` runs
+    // on every frame of an AppKit live resize. Recomputing these from
+    // scratch each time meant re-merging and re-filtering tens of
+    // thousands of entries per frame. They are pure functions of the
+    // published state, so memoizing until that state changes is safe.
+
+    /// Cache slot for `entries(for:hideMissing:)`.
+    private struct SystemEntriesKey: Hashable {
+        let systemID: String
+        let hideMissing: Bool
+    }
+
+    /// Cache slot for `filteredEntries(for:filter:)`.
+    private struct FilteredEntriesKey: Hashable {
+        let systemID: String
+        let filter: EntryFilter
+    }
+
+    private var systemEntriesCache: [SystemEntriesKey: [Entry]] = [:]
+    /// Single slot rather than a dictionary: only one gallery is on
+    /// screen at a time, and holding a filtered copy of every system's
+    /// entries would roughly double the catalogue's memory footprint.
+    private var filteredEntriesCache: (key: FilteredEntriesKey, value: [Entry])?
+    /// Counts are what the sidebar needs, so they get their own cache,
+    /// an `Int` per system instead of a second array.
+    private var filteredCountCache: [FilteredEntriesKey: Int] = [:]
+
+    /// Called from the `didSet` of every published property the entry
+    /// lists derive from.
+    private func invalidateEntryCaches() {
+        systemEntriesCache.removeAll(keepingCapacity: true)
+        filteredEntriesCache = nil
+        filteredCountCache.removeAll(keepingCapacity: true)
+    }
 
     /// Returns the visible systems, optionally filtered to those with at least one owned entry.
     func systems(hideMissing: Bool) -> [SystemNode] {
@@ -105,6 +142,75 @@ final class Library: ObservableObject {
     }
 
     func entries(for system: SystemNode, hideMissing: Bool) -> [Entry] {
+        let key = SystemEntriesKey(systemID: system.id, hideMissing: hideMissing)
+        if let hit = systemEntriesCache[key] { return hit }
+        let out = computeEntries(for: system, hideMissing: hideMissing)
+        systemEntriesCache[key] = out
+        return out
+    }
+
+    /// The gallery's view of a system: `entries(for:hideMissing:)` with
+    /// the favourites / failing / region / search filters applied. Lives
+    /// here rather than in `GalleryView` so the result can be memoized
+    /// across the many `body` evaluations a resize triggers.
+    func filteredEntries(for system: SystemNode, filter: EntryFilter) -> [Entry] {
+        let key = FilteredEntriesKey(systemID: system.id, filter: filter)
+        if let hit = filteredEntriesCache, hit.key == key { return hit.value }
+        let out = computeFilteredEntries(for: system, filter: filter)
+        filteredEntriesCache = (key, out)
+        return out
+    }
+
+    /// How many entries `filteredEntries(for:filter:)` would return. The
+    /// sidebar asks this for every system on every re-render, so it gets
+    /// its own memo instead of counting the catalogue each time.
+    func filteredCount(for system: SystemNode, filter: EntryFilter) -> Int {
+        let key = FilteredEntriesKey(systemID: system.id, filter: filter)
+        if let hit = filteredCountCache[key] { return hit }
+        if let hit = filteredEntriesCache, hit.key == key {
+            filteredCountCache[key] = hit.value.count
+            return hit.value.count
+        }
+        let count = computeFilteredEntries(for: system, filter: filter).count
+        filteredCountCache[key] = count
+        return count
+    }
+
+    private func computeFilteredEntries(for system: SystemNode,
+                                        filter: EntryFilter) -> [Entry] {
+        var all = entries(for: system, hideMissing: filter.hideMissing)
+        if filter.favoritesOnly {
+            let favs = favorites
+            all = all.filter { favs.contains($0.id) }
+        }
+        if filter.failingOnly {
+            let v = verifications
+            all = all.filter { entry in
+                guard let s = v[entry.id] else { return false }
+                return s.isFailing
+            }
+        }
+        if filter.region != .all {
+            all = all.filter { filter.region.matches($0.displayName) }
+        }
+        let trimmed = filter.search.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return all }
+        // Lazy/fuzzy match: every whitespace-separated token in the query
+        // must appear (case-insensitively) somewhere in the entry's
+        // searchable fields. So `Spo cl` matches `Capcom Sports Club`.
+        let tokens = trimmed.lowercased()
+            .split(whereSeparator: { $0.isWhitespace })
+            .map(String.init)
+        return all.filter { entry in
+            var haystack = "\(entry.displayName) \(entry.shortName)"
+            if let y = entry.year { haystack += " \(y)" }
+            if let p = entry.publisher { haystack += " \(p)" }
+            let lower = haystack.lowercased()
+            return tokens.allSatisfy { lower.contains($0) }
+        }
+    }
+
+    private func computeEntries(for system: SystemNode, hideMissing: Bool) -> [Entry] {
         let all: [Entry]
         switch system.kind {
         case .arcade:

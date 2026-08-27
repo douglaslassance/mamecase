@@ -237,6 +237,17 @@ enum RegionFilter: String, CaseIterable, Identifiable {
     }
 }
 
+/// The gallery's filter state, bundled so `Library` can use it as a
+/// memo-cache key instead of re-filtering the catalogue on every
+/// `body` evaluation.
+struct EntryFilter: Hashable {
+    var hideMissing: Bool = false
+    var favoritesOnly: Bool = false
+    var failingOnly: Bool = false
+    var region: RegionFilter = .all
+    var search: String = ""
+}
+
 /// A kind of media we display in the gallery for an entry.
 ///
 /// Naming note: MAME's `artwork/` directory refers specifically to bezels

@@ -41,37 +41,20 @@ struct GalleryView: View {
                       width: abs(a.x - b.x), height: abs(a.y - b.y))
     }
 
+    private var entryFilter: EntryFilter {
+        EntryFilter(hideMissing: hideMissing,
+                    favoritesOnly: showFavoritesOnly,
+                    failingOnly: showFailingOnly,
+                    region: regionFilter,
+                    search: searchText)
+    }
+
+    /// Filtering lives in `Library` so the result survives across `body`
+    /// evaluations. `body` is read several times per frame during a live
+    /// resize, and re-filtering a 10k-entry system that often was the
+    /// single biggest cost in the resize path.
     private var entries: [Entry] {
-        var all = library.entries(for: system, hideMissing: hideMissing)
-        if showFavoritesOnly {
-            let favs = library.favorites
-            all = all.filter { favs.contains($0.id) }
-        }
-        if showFailingOnly {
-            let v = library.verifications
-            all = all.filter { entry in
-                guard let s = v[entry.id] else { return false }
-                return s.isFailing
-            }
-        }
-        if regionFilter != .all {
-            all = all.filter { regionFilter.matches($0.displayName) }
-        }
-        let trimmed = searchText.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return all }
-        // Lazy/fuzzy match: every whitespace-separated token in the query
-        // must appear (case-insensitively) somewhere in the entry's
-        // searchable fields. So `Spo cl` matches `Capcom Sports Club`.
-        let tokens = trimmed.lowercased()
-            .split(whereSeparator: { $0.isWhitespace })
-            .map(String.init)
-        return all.filter { entry in
-            var haystack = "\(entry.displayName) \(entry.shortName)"
-            if let y = entry.year { haystack += " \(y)" }
-            if let p = entry.publisher { haystack += " \(p)" }
-            let lower = haystack.lowercased()
-            return tokens.allSatisfy { lower.contains($0) }
-        }
+        library.filteredEntries(for: system, filter: entryFilter)
     }
 
     var body: some View {

@@ -93,22 +93,11 @@ struct ContentView: View {
     /// region. Search is intentionally NOT applied — it's a per-system
     /// view-level concern, not a global library filter.
     private func filteredCount(for node: SystemNode) -> Int {
-        var all = library.entries(for: node, hideMissing: !showMissing)
-        if showFavoritesOnly {
-            let favs = library.favorites
-            all = all.filter { favs.contains($0.id) }
-        }
-        if showFailingOnly {
-            let v = library.verifications
-            all = all.filter { entry in
-                guard let s = v[entry.id] else { return false }
-                return s.isFailing
-            }
-        }
-        if regionFilter != .all {
-            all = all.filter { regionFilter.matches($0.displayName) }
-        }
-        return all.count
+        library.filteredCount(for: node,
+                              filter: EntryFilter(hideMissing: !showMissing,
+                                                  favoritesOnly: showFavoritesOnly,
+                                                  failingOnly: showFailingOnly,
+                                                  region: regionFilter))
     }
 
     /// Resolve currently-selected entry IDs to full `Entry` records using
