@@ -738,9 +738,12 @@ final class Library: ObservableObject {
 
     func addToPlaylist(_ playlistID: String, entryIDs: Set<Entry.ID>) {
         guard let idx = playlists.firstIndex(where: { $0.id == playlistID }) else { return }
-        for id in entryIDs where !playlists[idx].entryIDs.contains(id) {
-            playlists[idx].entryIDs.append(id)
-        }
+        // Build the new list before assigning, so a multi-selection add
+        // publishes one change instead of one per entry.
+        var ids = playlists[idx].entryIDs
+        let existing = Set(ids)
+        ids.append(contentsOf: entryIDs.filter { !existing.contains($0) })
+        playlists[idx].entryIDs = ids
         PlaylistsStore.save(playlists)
     }
 
