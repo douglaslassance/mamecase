@@ -77,3 +77,21 @@ enum DisplayName {
             .compactMap { regionFlags[$0.trimmingCharacters(in: .whitespaces).lowercased()] }
     }
 }
+
+/// Main-thread memo over `DisplayName.format`. Formatting walks the raw
+/// string character by character and allocates as it goes; the gallery
+/// calls it for every visible tile on every re-render and for every
+/// entry when the region filter is active, which made it a live-resize
+/// hotspot. Results only depend on the input string, so caching them is
+/// safe for the lifetime of the process.
+@MainActor
+enum FormattedDisplayName {
+    private static var cache: [String: DisplayName.Formatted] = [:]
+
+    static func format(_ raw: String) -> DisplayName.Formatted {
+        if let hit = cache[raw] { return hit }
+        let formatted = DisplayName.format(raw)
+        cache[raw] = formatted
+        return formatted
+    }
+}

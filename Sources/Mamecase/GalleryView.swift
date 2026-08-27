@@ -896,7 +896,7 @@ private struct EntryTile: View {
             .clipShape(RoundedRectangle(cornerRadius: artworkCornerRadius))
 
             // Line 1: just the cleaned title.
-            let formatted = DisplayName.format(entry.displayName)
+            let formatted = FormattedDisplayName.format(entry.displayName)
             Text(formatted.name)
                 .font(.subheadline.weight(.medium))
                 .lineLimit(1)

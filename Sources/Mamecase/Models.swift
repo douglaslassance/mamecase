@@ -226,10 +226,13 @@ enum RegionFilter: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Does this entry's display name pass the filter?
+    /// Does this entry's display name pass the filter? Goes through the
+    /// memoized formatter because the gallery re-runs this over the whole
+    /// catalogue every time it rebuilds its entry list.
+    @MainActor
     func matches(_ displayName: String) -> Bool {
         guard self != .all else { return true }
-        let flags = DisplayName.format(displayName).flags
+        let flags = FormattedDisplayName.format(displayName).flags
         return flags.contains(emoji)
     }
 }
