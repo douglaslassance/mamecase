@@ -11,17 +11,9 @@ struct MamecaseApp: App {
     @AppStorage("showStatusBar") private var showStatusBar: Bool = true
     @AppStorage("showInspector") private var showInspector: Bool = false
     #if !APPSTORE_BUILD
-    private let updaterController = SPUStandardUpdaterController(
-        startingUpdater: {
-            #if DEBUG
-            return false  // Sparkle keys aren't in the dev Info.plist
-            #else
-            return true
-            #endif
-        }(),
-        updaterDelegate: nil,
-        userDriverDelegate: nil
-    )
+    // Held here so the controller is created at app construction, as
+    // before. `AppUpdater` owns it so Settings can reach it too.
+    private let updaterController = AppUpdater.controller
     #endif
 
     init() {

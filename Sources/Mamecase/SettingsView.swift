@@ -202,6 +202,18 @@ private struct GeneralSettingsTab: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            #if !APPSTORE_BUILD && !DEBUG
+            Section {
+                AutomaticUpdatesToggle(updater: AppUpdater.updater)
+            } header: {
+                Text("Updates")
+            } footer: {
+                Text("Mamecase asks before installing anything. Check right now with \u{201C}Check for Updates\u{2026}\u{201D} in the Mamecase menu.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            #endif
         }
         .formStyle(.grouped)
     }
