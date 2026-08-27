@@ -6,25 +6,46 @@
 - Up to 72 characters total.
 - No `Co-Authored-By` lines, no trailers, no emoji.
 
-## Bundling
-
-Run `./bundle.sh` to produce `Mamecase.app` at the repo root from a
-release build. The bundle is gitignored — only the script is tracked.
-
 ## Releasing
 
-Tag (`git tag v0.x.y && git push --tags`), then from the repo root:
+The release pipeline lives in the `catapult` submodule and is configured
+by `catapult.toml` at the repo root. `catapult/README.md` is the full
+reference.
 
-1. `./build.sh` — bundles, Developer ID-signs, builds + notarizes the
-   DMG, writes `dist/mamecase-<version>-aarch64-apple-darwin.dmg` and
-   a `.sha256` sidecar.
-2. `./upload_build.sh` — uploads those assets to the matching GitHub
-   Release (`vX.Y.Z`), creating it if missing.
-3. `./submit_build.sh [--pull-request]` — bumps the
-   `douglaslassance/homebrew-tap` cask, runs `brew audit`/`install`
-   locally, pushes the branch, and optionally opens a PR.
+Tag first (`git tag v0.x.y && git push --tags`), then from the repo root:
 
-All three scripts read `.env` at the repo root (gitignored). Required
-keys: `APPLE_SIGNING_IDENTITY`, `NOTARIZATION_KEY_ID`,
-`NOTARIZATION_ISSUER_ID`, `NOTARIZATION_KEY` (base64 .p8). Optional:
-`GITHUB_PERSONAL_ACCESS_TOKEN`, `HOMEBREW_TAP_URL`.
+```sh
+./catapult/release.sh
+```
+
+That runs the whole flow for the `s3` and `homebrew` channels. It builds,
+Developer ID-signs, notarizes and staples, writes the DMG, uploads it
+along with the Sparkle appcast, and bumps the Homebrew cask.
+
+Individual steps are available when only one is needed:
+
+- `./catapult/build.sh` assembles `build/Mamecase.app` and produces a
+  notarized `dist/mamecase-<version>-aarch64-apple-darwin.dmg` plus a
+  `.sha256` sidecar.
+- `./catapult/upload.sh` pushes the DMG and appcast.
+- `./catapult/push_homebrew.sh` bumps the `douglaslassance/homebrew-tap`
+  cask, optionally with `--pull-request`.
+
+Every script sources `.env` at the repo root (gitignored). Copy
+`catapult/env.example` for the list of keys.
+
+To bump catapult, check out the new commit in the submodule and commit
+the pointer:
+
+```sh
+cd catapult && git fetch && git checkout <sha> && cd .. && git add catapult
+```
+
+## Local builds
+
+`build.sh` signs with Developer ID and uploads to Apple for
+notarization, which is more than a local test needs. To get a runnable
+`Mamecase.app` without either, run the same bundle steps with
+`APPLE_SIGNING_IDENTITY` and the `NOTARIZATION_*` variables unset. The
+script then falls back to an ad-hoc signature, which is enough to launch
+locally but not to distribute.
