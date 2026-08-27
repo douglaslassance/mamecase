@@ -26,6 +26,10 @@ struct GalleryView: View {
     @AppStorage("gridItemSize") private var gridItemSize: Double = 180
     @AppStorage("itemSpacing") private var itemSpacing: Double = 16
     @State private var anchor: Entry.ID?
+    /// Moving end of a shift-extended selection. `anchor` stays put while
+    /// this walks, so repeated shift+arrow grows the range instead of
+    /// re-selecting the same pair.
+    @State private var cursor: Entry.ID?
     @State private var pendingDownload: PendingDownload?
     @State private var pendingDelete: PendingDelete?
     @State private var tileFrames: [Entry.ID: CGRect] = [:]
@@ -64,8 +68,50 @@ struct GalleryView: View {
         // and `.background(GeometryReader)` only republishes after the
         // resize ends — Peel uses the same outer-GeometryReader idiom.
         GeometryReader { geo in
-            ScrollView {
-                galleryContent(containerWidth: geo.size.width)
+            // ScrollViewReader so arrow-key navigation can bring the new
+            // selection into view. Focus and the key handlers live in
+            // here too: `onKeyPress` only fires on the view that holds
+            // focus, and this is the level where both the container width
+            // and the scroll proxy are in scope.
+            ScrollViewReader { proxy in
+                ScrollView {
+                    galleryContent(containerWidth: geo.size.width)
+                }
+                .focusable()
+                .focused($focused)
+                .focusEffectDisabled()
+                .onAppear { focused = true }
+                .onKeyPress(.return) {
+                    if !selection.isEmpty {
+                        library.launch(ids: selection, in: system)
+                        return .handled
+                    }
+                    return .ignored
+                }
+                // ⌘A / ⌃A → select every entry the current filter+search show.
+                .onKeyPress(KeyEquivalent("a")) {
+                    let mods = NSEvent.modifierFlags
+                    guard mods.contains(.command) || mods.contains(.control) else {
+                        return .ignored
+                    }
+                    selection = Set(entries.map(\.id))
+                    anchor = entries.first?.id
+                    cursor = entries.first?.id
+                    return .handled
+                }
+                .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow]) { press in
+                    let direction: MasonryDirection
+                    switch press.key {
+                    case .upArrow: direction = .up
+                    case .downArrow: direction = .down
+                    case .leftArrow: direction = .left
+                    default: direction = .right
+                    }
+                    return moveSelection(direction,
+                                         extend: press.modifiers.contains(.shift),
+                                         containerWidth: geo.size.width,
+                                         proxy: proxy)
+                }
             }
         }
         .coordinateSpace(name: "gallery")
@@ -82,30 +128,10 @@ struct GalleryView: View {
                     .allowsHitTesting(false)
             }
         }
-        .focusable()
-        .focused($focused)
-        .focusEffectDisabled()
-        .onAppear { focused = true }
-        .onKeyPress(.return) {
-            if !selection.isEmpty {
-                library.launch(ids: selection, in: system)
-                return .handled
-            }
-            return .ignored
-        }
-        // ⌘A / ⌃A → select every entry the current filter+search show.
-        .onKeyPress(KeyEquivalent("a")) {
-            let mods = NSEvent.modifierFlags
-            guard mods.contains(.command) || mods.contains(.control) else {
-                return .ignored
-            }
-            selection = Set(entries.map(\.id))
-            anchor = entries.first?.id
-            return .handled
-        }
         .onChange(of: system.id) { _, _ in
             selection.removeAll()
             anchor = nil
+            cursor = nil
         }
         .navigationTitle(system.displayName)
         .searchable(text: $searchText, placement: .toolbar, prompt: "Search \(system.displayName)")
@@ -305,6 +331,7 @@ struct GalleryView: View {
                         if !selection.contains(entry.id) {
                             selection = [entry.id]
                             anchor = entry.id
+                            cursor = entry.id
                         }
                     }
                 )
@@ -699,16 +726,105 @@ struct GalleryView: View {
             } else {
                 selection.insert(entry.id)
                 anchor = entry.id
+                cursor = entry.id
             }
         } else if flags.contains(.shift), let anchor,
                   let from = entries.firstIndex(where: { $0.id == anchor }),
                   let to = entries.firstIndex(where: { $0.id == entry.id }) {
             let range = from <= to ? from...to : to...from
             selection = Set(entries[range].map(\.id))
+            cursor = entry.id
         } else {
             selection = [entry.id]
             anchor = entry.id
+            cursor = entry.id
         }
+    }
+
+    // MARK: - Keyboard navigation
+
+    /// Move the selection one tile in `direction`, following the layout
+    /// the user is actually looking at. The masonry partition is rebuilt
+    /// here rather than shared with the rendering path — this runs once
+    /// per keystroke, where rendering runs once per frame, so an O(n)
+    /// pass on key-down is cheaper than plumbing the laid-out geometry
+    /// back up through the view tree.
+    private func moveSelection(_ direction: MasonryDirection,
+                               extend: Bool,
+                               containerWidth: CGFloat,
+                               proxy: ScrollViewProxy) -> KeyPress.Result {
+        let list = entries
+        guard !list.isEmpty else { return .ignored }
+
+        // Nothing selected yet: the first arrow press lands on the first
+        // tile rather than doing nothing.
+        guard let current = cursor ?? anchor ?? selection.first,
+              let index = list.firstIndex(where: { $0.id == current })
+        else {
+            apply(list[0], extend: false, in: list, proxy: proxy)
+            return .handled
+        }
+
+        let pad = CGFloat(itemSpacing)
+        let inner = max(0, containerWidth - pad * 2)
+        let aspects = list.map { artworkAspect(for: $0) }
+        let target: Int?
+        switch layoutMode {
+        case .verticalMasonry:
+            let columns = MasonryMath.columnCount(containerWidth: inner,
+                                                  targetColumnWidth: CGFloat(gridItemSize),
+                                                  spacing: pad)
+            let width = MasonryMath.columnWidth(containerWidth: inner,
+                                                columnCount: columns,
+                                                targetColumnWidth: CGFloat(gridItemSize),
+                                                spacing: pad)
+            let partition = MasonryMath.verticalPartition(
+                aspects: aspects,
+                columnCount: columns,
+                artworkWidth: max(0, width - TileChrome.horizontal),
+                spacing: pad)
+            target = MasonryMath.verticalNeighbor(of: index,
+                                                  direction: direction,
+                                                  partition: partition)
+        case .horizontalMasonry:
+            let partition = MasonryMath.horizontalPartition(
+                aspects: aspects,
+                containerWidth: inner,
+                targetRowHeight: CGFloat(gridItemSize),
+                spacing: pad)
+            target = MasonryMath.horizontalNeighbor(of: index,
+                                                    direction: direction,
+                                                    partition: partition,
+                                                    entryCount: list.count)
+        }
+
+        // At an edge there is nowhere to go, but still swallow the key so
+        // the ScrollView doesn't scroll out from under the selection.
+        guard let target else { return .handled }
+        apply(list[target], extend: extend, in: list, proxy: proxy)
+        return .handled
+    }
+
+    /// Commit a navigation step. Plain moves reset the range, shift-moves
+    /// walk the cursor and re-derive the range from the fixed anchor,
+    /// matching what shift-clicking already does.
+    private func apply(_ entry: Entry,
+                       extend: Bool,
+                       in list: [Entry],
+                       proxy: ScrollViewProxy) {
+        if extend,
+           let anchor,
+           let from = list.firstIndex(where: { $0.id == anchor }),
+           let to = list.firstIndex(where: { $0.id == entry.id }) {
+            let range = from <= to ? from...to : to...from
+            selection = Set(list[range].map(\.id))
+            cursor = entry.id
+        } else {
+            selection = [entry.id]
+            anchor = entry.id
+            cursor = entry.id
+        }
+        proxy.scrollTo(entry.id, anchor: .center)
     }
 }
 
