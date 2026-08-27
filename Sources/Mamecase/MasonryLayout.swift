@@ -63,12 +63,19 @@ struct VerticalMasonryView<TileContent: View>: View {
         let tileWidth = columnWidth
         let artworkWidth = max(0, tileWidth - TileChrome.horizontal)
         var columns: [[ColumnItem]] = Array(repeating: [], count: n)
+        // This runs once per frame during a live resize, over every
+        // entry in the system, so it stays free of incidental
+        // allocation: capacity is reserved up front and the shortest
+        // column is found with a plain scan rather than `enumerated()`.
+        let expected = entries.count / n + 1
+        for i in columns.indices { columns[i].reserveCapacity(expected) }
         var heights: [CGFloat] = Array(repeating: 0, count: n)
         for entry in entries {
             let aspect = max(aspectRatio(entry), 0.0001)
             let artworkHeight = artworkWidth / aspect
             let tileHeight = artworkHeight + TileChrome.vertical
-            let shortest = heights.enumerated().min { $0.element < $1.element }?.offset ?? 0
+            var shortest = 0
+            for i in 1..<n where heights[i] < heights[shortest] { shortest = i }
             columns[shortest].append(ColumnItem(entry: entry,
                                                 artworkSize: CGSize(width: artworkWidth,
                                                                     height: artworkHeight)))
@@ -114,12 +121,16 @@ struct HorizontalMasonryView<TileContent: View>: View {
         var rows: [[RowItem]] = []
         var pendingEntries: [Entry] = []
         var pendingAspects: [CGFloat] = []
+        // Running total instead of re-reducing `pendingAspects` for every
+        // entry. Row breaking re-runs on every frame of a live resize, and
+        // the reduce made it quadratic in the length of each row.
+        var pendingAspectSum: CGFloat = 0
 
         /// Width contribution PER TILE for a row at a given artwork height.
         /// Includes the per-tile chrome since tile_width = artwork + chrome.
         func rowWidth(at artworkHeight: CGFloat) -> CGFloat {
             let count = pendingEntries.count
-            let totalArtwork = pendingAspects.reduce(0, +) * artworkHeight
+            let totalArtwork = pendingAspectSum * artworkHeight
             let totalChrome = CGFloat(count) * TileChrome.horizontal
             let totalSpacing = CGFloat(max(0, count - 1)) * spacing
             return totalArtwork + totalChrome + totalSpacing
@@ -133,9 +144,10 @@ struct HorizontalMasonryView<TileContent: View>: View {
                 let count = pendingEntries.count
                 let totalChrome = CGFloat(count) * TileChrome.horizontal
                 let totalSpacing = CGFloat(max(0, count - 1)) * spacing
-                let totalAspect = pendingAspects.reduce(0, +)
                 let availableArtwork = max(0, containerWidth - totalChrome - totalSpacing)
-                artworkHeight = totalAspect > 0 ? availableArtwork / totalAspect : targetRowHeight
+                artworkHeight = pendingAspectSum > 0
+                    ? availableArtwork / pendingAspectSum
+                    : targetRowHeight
             } else {
                 artworkHeight = targetRowHeight
             }
@@ -145,20 +157,24 @@ struct HorizontalMasonryView<TileContent: View>: View {
                                             height: artworkHeight))
             }
             rows.append(items)
-            pendingEntries = []
-            pendingAspects = []
+            pendingEntries.removeAll(keepingCapacity: true)
+            pendingAspects.removeAll(keepingCapacity: true)
+            pendingAspectSum = 0
         }
 
         for entry in entries {
             let aspect = max(aspectRatio(entry), 0.0001)
             pendingEntries.append(entry)
             pendingAspects.append(aspect)
+            pendingAspectSum += aspect
             if rowWidth(at: targetRowHeight) > containerWidth, pendingEntries.count > 1 {
                 pendingEntries.removeLast()
                 pendingAspects.removeLast()
+                pendingAspectSum -= aspect
                 finalize(stretchToFill: true)
-                pendingEntries = [entry]
-                pendingAspects = [aspect]
+                pendingEntries.append(entry)
+                pendingAspects.append(aspect)
+                pendingAspectSum = aspect
             }
         }
         finalize(stretchToFill: false)
