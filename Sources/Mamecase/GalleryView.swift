@@ -831,6 +831,9 @@ private struct EntryTile: View {
     @AppStorage("tileCornerRadius") private var tileCornerRadius: Double = 10
     @State private var snapURL: URL?
     @State private var coverURL: URL?
+    /// Decoded artwork. Populated by `resolveMedia()` so `body` never
+    /// touches the disk — see `ThumbnailCache`.
+    @State private var artwork: NSImage?
 
     /// Corner radius applied to the inner artwork — slightly tighter than
     /// the tile chrome so the artwork looks nested inside it. Clamps to 0.
@@ -939,7 +942,10 @@ private struct EntryTile: View {
     private func resolveMedia() async {
         snapURL = library.mediaURL(for: entry, kind: .snap)
         coverURL = library.mediaURL(for: entry, kind: .flyers)
-        guard snapURL == nil && coverURL == nil else { return }
+        if snapURL != nil || coverURL != nil {
+            await loadArtwork()
+            return
+        }
         // Only auto-fetch online media for ROMs the user actually owns.
         // For unowned entries the menu's "Download Media" action is the
         // explicit, user-driven way to populate art.
@@ -951,14 +957,39 @@ private struct EntryTile: View {
         for kind in order {
             if await library.fetchOnlineMedia(for: entry, kind: kind) != nil { break }
         }
-        snapURL = library.mediaURL(for: entry, kind: .snap)
-        coverURL = library.mediaURL(for: entry, kind: .flyers)
+        // Past the memo: the fetch above just wrote the file we're about
+        // to look for, so the cached miss from the first pass is stale.
+        snapURL = library.refreshMediaURL(for: entry, kind: .snap)
+        coverURL = library.refreshMediaURL(for: entry, kind: .flyers)
+        await loadArtwork()
     }
 
+    /// Decode the preferred artwork off the main thread and hold onto it,
+    /// so re-renders (a window resize produces one per frame) just read
+    /// the already-decoded image.
+    private func loadArtwork() async {
+        guard let url = preferredURL else {
+            artwork = nil
+            return
+        }
+        if let hit = ThumbnailCache.shared.cached(url) {
+            artwork = hit
+            return
+        }
+        artwork = await ThumbnailCache.shared.image(for: url)
+    }
+
+    private var preferredURL: URL? {
+        (mediaKind == .flyers) ? coverURL : snapURL
+    }
+
+    /// Reads state only — no I/O. Falls back to a cache probe so a tile
+    /// scrolled out of a lazy stack and back renders its art immediately
+    /// instead of flashing the placeholder while `loadArtwork()` runs.
     private func preferredImage() -> NSImage? {
-        let url: URL? = (mediaKind == .flyers) ? coverURL : snapURL
-        guard let url else { return nil }
-        return NSImage(contentsOf: url)
+        if let artwork { return artwork }
+        guard let url = preferredURL else { return nil }
+        return ThumbnailCache.shared.cached(url)
     }
 
     /// Short human label of the system this entry belongs to, for the

@@ -18,7 +18,7 @@ private extension String {
 
 @MainActor
 final class Library: ObservableObject {
-    @Published var config: MameConfig?
+    @Published var config: MameConfig? { didSet { invalidateMediaCaches() } }
     @Published var softwareLists: [SoftwareList] = [] { didSet { invalidateEntryCaches() } }
     @Published var arcadeEntries: [Entry] = [] { didSet { invalidateEntryCaches() } }
     @Published var loadError: String?
@@ -90,6 +90,12 @@ final class Library: ObservableObject {
         let filter: EntryFilter
     }
 
+    /// Cache slot for `mediaURL(for:kind:)`.
+    private struct MediaURLKey: Hashable {
+        let entryID: Entry.ID
+        let kind: MediaKind
+    }
+
     private var systemEntriesCache: [SystemEntriesKey: [Entry]] = [:]
     /// Single slot rather than a dictionary: only one gallery is on
     /// screen at a time, and holding a filtered copy of every system's
@@ -98,6 +104,7 @@ final class Library: ObservableObject {
     /// Counts are what the sidebar needs, so they get their own cache,
     /// an `Int` per system instead of a second array.
     private var filteredCountCache: [FilteredEntriesKey: Int] = [:]
+    private var mediaURLCache: [MediaURLKey: URL?] = [:]
 
     /// Called from the `didSet` of every published property the entry
     /// lists derive from.
@@ -105,6 +112,13 @@ final class Library: ObservableObject {
         systemEntriesCache.removeAll(keepingCapacity: true)
         filteredEntriesCache = nil
         filteredCountCache.removeAll(keepingCapacity: true)
+    }
+
+    /// Called when files behind already-resolved media URLs may have
+    /// changed on disk (archive extraction, "Update Media", online fetch).
+    private func invalidateMediaCaches() {
+        mediaURLCache.removeAll(keepingCapacity: true)
+        ThumbnailCache.shared.removeAll()
     }
 
     /// Returns the visible systems, optionally filtered to those with at least one owned entry.
@@ -573,11 +587,31 @@ final class Library: ObservableObject {
         }
     }
 
-    /// Returns a local file URL for the given media kind, or nil if nothing
-    /// is available. Delegates to `MediaProvider`.
+    /// Returns a local file URL for the given media kind, or nil if
+    /// nothing is available. Delegates to `MediaProvider`, memoized.
+    ///
+    /// The underlying lookup stats every candidate directory/extension
+    /// pair and reads the magic bytes of each hit. The masonry layouts
+    /// ask for this for *every* entry whenever they lay out, so without
+    /// the cache a resize of a 10k-entry system issued tens of thousands
+    /// of syscalls per frame on the main thread. Entries are invalidated
+    /// by `refreshMediaURL(for:kind:)` and by `invalidateMediaCaches()`.
     func mediaURL(for entry: Entry, kind: MediaKind) -> URL? {
+        let key = MediaURLKey(entryID: entry.id, kind: kind)
+        if let hit = mediaURLCache[key] { return hit }
         guard let cfg = config else { return nil }
-        return MediaProvider.url(for: entry, kind: kind, config: cfg)
+        let url = MediaProvider.url(for: entry, kind: kind, config: cfg)
+        mediaURLCache[key] = url
+        return url
+    }
+
+    /// Re-resolve past the cache. Callers that just wrote a file for this
+    /// entry (an online fetch, an archive extraction) need this — the
+    /// cached miss from before the write would otherwise stick.
+    @discardableResult
+    func refreshMediaURL(for entry: Entry, kind: MediaKind) -> URL? {
+        mediaURLCache.removeValue(forKey: MediaURLKey(entryID: entry.id, kind: kind))
+        return mediaURL(for: entry, kind: kind)
     }
 
     /// Look up the history/dat text for an entry. First call parses the
@@ -615,6 +649,7 @@ final class Library: ObservableObject {
         arcadeStatus = "Updating media…"
         defer {
             arcadeStatus = nil
+            invalidateMediaCaches()
             mediaGeneration &+= 1
             // A user running Update Media has often just dragged a fresh
             // ROM into a rompath — rescan presence so the tile flips
@@ -766,7 +801,10 @@ final class Library: ObservableObject {
                 guard let self else { return }
                 self.extractingMedia.remove(kind)
                 if self.extractingMedia.isEmpty { self.arcadeStatus = nil }
-                if result.anySucceeded { self.mediaGeneration &+= 1 }
+                if result.anySucceeded {
+                    self.invalidateMediaCaches()
+                    self.mediaGeneration &+= 1
+                }
                 if result.needsSevenZip {
                     self.sevenZipMissing = true
                 }
