@@ -24,7 +24,12 @@ struct ContentView: View {
     @AppStorage("showStatusBar") private var showStatusBar: Bool = true
     @AppStorage("showInspector") private var showInspector: Bool = false
     @AppStorage("selectedSystemID") private var persistedSystemID: String = ""
-    @AppStorage("controllerScheme") private var controllerScheme: String = ""
+    /// Not `@AppStorage` any more. The controller profile is stored per
+    /// system and per connected-pad set, so this mirrors whatever
+    /// `ControllerProfileStore` holds for the current pairing and is
+    /// resynced whenever the system or the plugged-in hardware changes.
+    @State private var controllerScheme: String = ""
+    @ObservedObject private var controllers = ControllerDetector.shared
     @AppStorage("shaderScheme") private var shaderScheme: String = ""
     @AppStorage("regionFilter") private var regionFilter: RegionFilter = .all
     @AppStorage("layoutMode") private var layoutMode: LayoutMode = .horizontalMasonry
@@ -109,7 +114,39 @@ struct ContentView: View {
         return all.filter { entrySelection.contains($0.id) }
     }
 
+    /// `nil` on cross-system nodes, where the profile picker is hidden.
+    private var currentSystemToken: String? { currentNode?.kind.systemToken }
+
     private var controllerActive: Bool { !controllerScheme.isEmpty }
+
+    /// Names the pairing the choice will be remembered against, so it is
+    /// obvious the menu is scoped and not global.
+    private var connectedControllerSummary: String {
+        let pads = controllers.connected
+        guard !pads.isEmpty else { return "No controller connected" }
+        return pads.map(\.name).joined(separator: " + ")
+    }
+
+    /// Pull the stored profile for the current pairing into the picker.
+    private func syncControllerScheme() {
+        guard let system = currentSystemToken else { return }
+        controllerScheme = ControllerProfileStore.profile(system: system,
+                                                          devices: controllers.connected)
+    }
+
+    /// Teaching gesture. Whatever the user picks is remembered for this
+    /// system paired with exactly the pads currently plugged in.
+    private var controllerSchemeBinding: Binding<String> {
+        Binding(get: { controllerScheme },
+                set: { newValue in
+                    controllerScheme = newValue
+                    guard let system = currentSystemToken else { return }
+                    ControllerProfileStore.setProfile(newValue,
+                                                      system: system,
+                                                      devices: controllers.connected)
+                })
+    }
+
     private var shaderActive: Bool { !shaderScheme.isEmpty }
 
     private var singleSelectedEntry: Entry? {
@@ -195,24 +232,31 @@ struct ContentView: View {
                 .help("Filter by region")
             }
             ToolbarItem(id: "controller-scheme", placement: .primaryAction) {
-                Menu {
-                    Picker("Controller profile", selection: $controllerScheme) {
-                        Text("Default").tag("")
-                        if !library.controllerSchemes.isEmpty {
-                            Divider()
-                            ForEach(library.controllerSchemes, id: \.self) { name in
-                                Text(name).tag(name)
+                // Hidden on All, Recent and playlists. Those span several
+                // systems, so there is no single profile to show. Launching
+                // from them still resolves per entry.
+                if currentSystemToken != nil {
+                    Menu {
+                        Section(connectedControllerSummary) {
+                            Picker("Controller profile", selection: controllerSchemeBinding) {
+                                Text("Default").tag("")
+                                if !library.controllerSchemes.isEmpty {
+                                    Divider()
+                                    ForEach(library.controllerSchemes, id: \.self) { name in
+                                        Text(name).tag(name)
+                                    }
+                                }
                             }
+                            .pickerStyle(.inline)
+                            .labelsHidden()
                         }
+                    } label: {
+                        Image(systemName: "gamecontroller")
+                            .foregroundStyle(controllerActive ? Color.accentColor : Color.primary)
                     }
-                    .pickerStyle(.inline)
-                    .labelsHidden()
-                } label: {
-                    Image(systemName: "gamecontroller")
-                        .foregroundStyle(controllerActive ? Color.accentColor : Color.primary)
+                    .help("MAME -ctrlr profile, remembered for this system and these controllers")
+                    .disabled(library.controllerSchemes.isEmpty)
                 }
-                .help("MAME -ctrlr profile")
-                .disabled(library.controllerSchemes.isEmpty)
             }
             ToolbarItem(id: "shader-scheme", placement: .primaryAction) {
                 Menu {
@@ -271,14 +315,19 @@ struct ContentView: View {
         .onChange(of: sidebarSystems) { _, newSystems in
             restoreSelectionIfNeeded(in: newSystems)
         }
+        .onChange(of: controllers.connected) { _, _ in
+            syncControllerScheme()
+        }
         .onChange(of: selection) { _, new in
             if let new { persistedSystemID = new }
+            syncControllerScheme()
             // Clearing the search on system change matches Finder /
             // Mail / Notes — search scope is implicitly per-folder.
             searchText = ""
         }
         .onAppear {
             restoreSelectionIfNeeded(in: sidebarSystems)
+            syncControllerScheme()
         }
     }
 

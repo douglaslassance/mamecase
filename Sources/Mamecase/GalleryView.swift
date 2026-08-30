@@ -624,7 +624,7 @@ struct GalleryView: View {
     /// entry — mirrors what `Library.launch(_:)` actually runs.
     private func launchCommand(for entry: Entry) -> String {
         guard let cfg = library.config else { return entry.shortName }
-        let scheme = UserDefaults.standard.string(forKey: "controllerScheme") ?? ""
+        let scheme = ControllerProfileStore.profile(for: entry)
         let shader = UserDefaults.standard.string(forKey: "shaderScheme") ?? ""
         let args = MameLauncher.arguments(for: entry,
                                           statePath: cfg.statePath,

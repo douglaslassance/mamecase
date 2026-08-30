@@ -838,7 +838,7 @@ final class Library: ObservableObject {
 
     func launch(_ entry: Entry) {
         guard let cfg = config else { return }
-        let scheme = UserDefaults.standard.string(forKey: "controllerScheme") ?? ""
+        let scheme = ControllerProfileStore.profile(for: entry)
         let shader = UserDefaults.standard.string(forKey: "shaderScheme") ?? ""
         do {
             try MameLauncher.launch(executable: cfg.executable,
