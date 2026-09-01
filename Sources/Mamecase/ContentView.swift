@@ -231,11 +231,14 @@ struct ContentView: View {
                 .labelsHidden()
                 .help("Filter by region")
             }
-            ToolbarItem(id: "controller-scheme", placement: .primaryAction) {
-                // Hidden on All, Recent and playlists. Those span several
-                // systems, so there is no single profile to show. Launching
-                // from them still resolves per entry.
-                if currentSystemToken != nil {
+            // Omitted entirely on All, Recent and playlists. Those span
+            // several systems, so there is no single profile to show.
+            // Launching from them still resolves per entry. The condition
+            // has to live out here in the toolbar builder rather than
+            // inside the item, or the item still exists with empty
+            // content and leaves a gap in the toolbar.
+            if currentSystemToken != nil {
+                ToolbarItem(id: "controller-scheme", placement: .primaryAction) {
                     Menu {
                         Section(connectedControllerSummary) {
                             Picker("Controller profile", selection: controllerSchemeBinding) {
