@@ -274,7 +274,10 @@ struct EntryDetailView: View {
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 20)
-                        .padding(.bottom, 20)
+                        // Deeper than the fade below, so scrolling to
+                        // the end parks the gradient over blank space
+                        // rather than dimming the last line.
+                        .padding(.bottom, 44)
                 } else {
                     Text("No history entry for \(HistoryProvider.key(for: entry)).")
                         .font(.caption)
@@ -284,8 +287,20 @@ struct EntryDetailView: View {
                         .padding(.top, 6)
                 }
             }
+            .mask(bottomFade)
         }
         .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    /// Softens where the history runs into the card's bottom rim. A
+    /// fixed-height gradient rather than a fractional one, so the fade
+    /// stays the same depth whatever the card's height.
+    private var bottomFade: some View {
+        VStack(spacing: 0) {
+            Color.black
+            LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                .frame(height: 36)
+        }
     }
 
     @ViewBuilder
