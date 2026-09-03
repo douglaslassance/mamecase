@@ -23,6 +23,11 @@ final class ThumbnailCache {
     /// upscales.
     nonisolated private static let maxPixelSize: CGFloat = 1400
 
+    /// Longest edge for the detail sheet's hero artwork. The sheet gives
+    /// the image most of a ~1000pt window, so the tile cap would show a
+    /// visible upscale on Retina.
+    nonisolated private static let maxDetailPixelSize: CGFloat = 2800
+
     private let cache: NSCache<NSURL, NSImage> = {
         let cache = NSCache<NSURL, NSImage>()
         // Several screenfuls of tiles, bounded by bytes so a run of large
@@ -30,6 +35,16 @@ final class ThumbnailCache {
         // under memory pressure on its own.
         cache.countLimit = 400
         cache.totalCostLimit = 256 * 1024 * 1024
+        return cache
+    }()
+
+    /// Detail-resolution images. Separate from `cache` so one sheet's
+    /// hero artwork can't evict a screenful of tiles, and so the two
+    /// resolutions don't fight over the same key.
+    private let fullCache: NSCache<NSURL, NSImage> = {
+        let cache = NSCache<NSURL, NSImage>()
+        cache.countLimit = 8
+        cache.totalCostLimit = 128 * 1024 * 1024
         return cache
     }()
 
@@ -43,11 +58,26 @@ final class ThumbnailCache {
     func image(for url: URL) async -> NSImage? {
         if let hit = cached(url) { return hit }
         let box = await Task.detached(priority: .userInitiated) {
-            ImageBox(image: Self.decode(url: url))
+            ImageBox(image: Self.decode(url: url, maxPixelSize: Self.maxPixelSize))
         }.value
         guard let image = box.image else { return nil }
         let cost = Int(image.size.width * image.size.height) * 4
         cache.setObject(image, forKey: url as NSURL, cost: cost)
+        return image
+    }
+
+    /// Cached detail-resolution image, decoding it off the main thread
+    /// on a miss. Falls back to the tile thumbnail's cache on a decode
+    /// failure so a sheet never comes up blank for art the gallery is
+    /// already showing.
+    func fullImage(for url: URL) async -> NSImage? {
+        if let hit = fullCache.object(forKey: url as NSURL) { return hit }
+        let box = await Task.detached(priority: .userInitiated) {
+            ImageBox(image: Self.decode(url: url, maxPixelSize: Self.maxDetailPixelSize))
+        }.value
+        guard let image = box.image else { return cached(url) }
+        let cost = Int(image.size.width * image.size.height) * 4
+        fullCache.setObject(image, forKey: url as NSURL, cost: cost)
         return image
     }
 
@@ -56,6 +86,7 @@ final class ThumbnailCache {
     /// re-extraction or an "Update Media" run.
     func removeAll() {
         cache.removeAllObjects()
+        fullCache.removeAllObjects()
     }
 
     /// `NSImage` isn't `Sendable`; the instance is freshly created on the
@@ -65,7 +96,7 @@ final class ThumbnailCache {
         let image: NSImage?
     }
 
-    nonisolated private static func decode(url: URL) -> NSImage? {
+    nonisolated private static func decode(url: URL, maxPixelSize: CGFloat) -> NSImage? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,

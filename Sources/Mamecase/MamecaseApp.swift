@@ -53,6 +53,15 @@ struct MamecaseApp: App {
                 #endif
             }
             CommandMenu("View") {
+                // Posts rather than binding to state: the selection this
+                // acts on lives in ContentView, and a menu closure here
+                // can't see it.
+                Button("Show Details") {
+                    NotificationCenter.default.post(name: AppNotification.toggleEntryDetails,
+                                                    object: nil)
+                }
+                .keyboardShortcut("i", modifiers: [.command])
+                Divider()
                 Toggle("Inspector", isOn: $showInspector)
                     .keyboardShortcut("i", modifiers: [.command, .option])
                 Toggle("Status Bar", isOn: $showStatusBar)

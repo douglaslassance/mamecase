@@ -264,6 +264,16 @@ struct EntryFilter: Hashable {
 enum MediaKind: String, CaseIterable, Identifiable {
     case flyers
     case snap
+    case marquee
+    case cabinet
+    case title
+    case cpanel
+
+    /// Kinds the gallery grid offers as a browsing mode. The rest are
+    /// supporting shots — worth a look on the detail card, but MAME's
+    /// packs for them are usually partial, so browsing a whole library
+    /// by them would be mostly placeholders.
+    static let galleryCases: [MediaKind] = [.flyers, .snap]
 
     var id: String { rawValue }
 
@@ -271,6 +281,10 @@ enum MediaKind: String, CaseIterable, Identifiable {
         switch self {
         case .flyers: return "Flyers"
         case .snap: return "Snap"
+        case .marquee: return "Marquee"
+        case .cabinet: return "Cabinet"
+        case .title: return "Title"
+        case .cpanel: return "Panel"
         }
     }
 
@@ -278,6 +292,26 @@ enum MediaKind: String, CaseIterable, Identifiable {
         switch self {
         case .flyers: return "rectangle.portrait.on.rectangle.portrait"
         case .snap: return "photo"
+        case .marquee: return "sparkles"
+        case .cabinet: return "arcade.stick.console"
+        case .title: return "textformat"
+        case .cpanel: return "arcade.stick"
+        }
+    }
+
+    /// The `ui.ini` key holding this kind's directory, plus MAME's own
+    /// default for it. `nil` for the two kinds `MameConfigLoader`
+    /// resolves by hand: snap comes from mame.ini's `snapshot_directory`,
+    /// and flyers falls back to the covers directory for software-list
+    /// entries. Adding another kind is this entry plus a `label` and a
+    /// `systemImage` — nothing else knows the list.
+    var directoryOption: (key: String, fallback: String)? {
+        switch self {
+        case .flyers, .snap: return nil
+        case .marquee: return ("marquees_directory", "marquees")
+        case .cabinet: return ("cabinets_directory", "cabinets")
+        case .title: return ("titles_directory", "titles")
+        case .cpanel: return ("cpanels_directory", "cpanel")
         }
     }
 }
@@ -355,6 +389,10 @@ struct MameConfig {
     let flyerPaths: [URL]
     /// resolved cover-art dirs (Mamecase convention; defaults to `<mameHome>/covers`)
     let coverPaths: [URL]
+    /// resolved directories for the media kinds that come straight from
+    /// a ui.ini directory option (marquees, cabinets, titles, control
+    /// panels). Keyed by kind; a missing key means not configured.
+    let mediaPaths: [MediaKind: [URL]]
     /// resolved shader directory (mame's `glsl_shader_path`, defaults to `glsl`)
     let shaderPaths: [URL]
     /// resolved history-dat directory (mame's `historypath`, defaults to `history`)

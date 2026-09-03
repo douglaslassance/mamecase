@@ -55,6 +55,16 @@ enum MameConfigLoader {
         // directory under mameHome unless we surface a setting later.
         let coverPaths = [mameHome.appendingPathComponent("covers", isDirectory: true)]
 
+        // Everything else MAME's UI knows how to show — marquees,
+        // cabinets, titles, control panels. Each kind names its own
+        // ui.ini key and MAME's default for it, so this loop covers any
+        // kind added to `MediaKind` later without touching the loader.
+        var mediaPaths: [MediaKind: [URL]] = [:]
+        for kind in MediaKind.allCases {
+            guard let option = kind.directoryOption else { continue }
+            mediaPaths[kind] = resolvePaths(values[option.key] ?? option.fallback, base: mameHome)
+        }
+
         let executable = try locateMame(configured: settings.effectiveMameExecutablePath)
 
         return MameConfig(
@@ -66,6 +76,7 @@ enum MameConfigLoader {
             ctrlrPaths: ctrlrPaths,
             flyerPaths: flyerPaths,
             coverPaths: coverPaths,
+            mediaPaths: mediaPaths,
             shaderPaths: shaderPaths,
             historyPaths: historyPaths,
             statePath: statePath,

@@ -170,6 +170,10 @@ actor MediaProvider {
         switch kind {
         case .flyers: bucket = "Named_Boxarts"
         case .snap: bucket = "Named_Snaps"
+        case .title: bucket = "Named_Titles"
+        // libretro-thumbnails has no marquee / cabinet / control-panel
+        // buckets. Those are local-only, from MAME's own art packs.
+        case .marquee, .cabinet, .cpanel: return []
         }
         let display = entry.displayName
         var names: [String] = [display]
@@ -569,6 +573,8 @@ actor MediaProvider {
             return config.flyerPaths
         case (.flyers, .software):
             return config.coverPaths
+        default:
+            return config.mediaPaths[kind] ?? []
         }
     }
 
@@ -578,6 +584,7 @@ actor MediaProvider {
         switch kind {
         case .snap: return config.snapPaths
         case .flyers: return config.flyerPaths + config.coverPaths
+        default: return config.mediaPaths[kind] ?? []
         }
     }
 

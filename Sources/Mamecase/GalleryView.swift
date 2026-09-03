@@ -22,6 +22,10 @@ struct GalleryView: View {
     let enableShowMissing: () -> Void
     @Binding var searchText: String
     @Binding var selection: Set<Entry.ID>
+    /// Entry the detail card is showing, or nil when it's closed. Owned
+    /// by `ContentView` because the card is a window-level modal — it
+    /// dims the sidebar too, so it can't live inside the gallery pane.
+    @Binding var detailEntryID: Entry.ID?
 
     @AppStorage("gridItemSize") private var gridItemSize: Double = 180
     @AppStorage("itemSpacing") private var itemSpacing: Double = 16
@@ -32,6 +36,10 @@ struct GalleryView: View {
     @State private var cursor: Entry.ID?
     @State private var pendingDownload: PendingDownload?
     @State private var pendingDelete: PendingDelete?
+    /// Set to ask the gallery's ScrollViewReader to bring an entry into
+    /// view. Cleared once it has. Needed because the proxy only exists
+    /// inside the reader's closure, well below the sheet.
+    @State private var scrollTarget: Entry.ID?
     @State private var tileFrames: [Entry.ID: CGRect] = [:]
     @State private var marqueeStart: CGPoint?
     @State private var marqueeCurrent: CGPoint?
@@ -81,7 +89,13 @@ struct GalleryView: View {
                 .focused($focused)
                 .focusEffectDisabled()
                 .onAppear { focused = true }
+                .onChange(of: scrollTarget) { _, target in
+                    guard let target else { return }
+                    proxy.scrollTo(target, anchor: .center)
+                    scrollTarget = nil
+                }
                 .onKeyPress(.return) {
+                    guard detailEntryID == nil else { return .ignored }
                     if !selection.isEmpty {
                         library.launch(ids: selection, in: system)
                         return .handled
@@ -100,6 +114,7 @@ struct GalleryView: View {
                     return .handled
                 }
                 .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow]) { press in
+                    guard detailEntryID == nil else { return .ignored }
                     let direction: MasonryDirection
                     switch press.key {
                     case .upArrow: direction = .up
@@ -127,6 +142,21 @@ struct GalleryView: View {
                     .offset(x: rect.minX, y: rect.minY)
                     .allowsHitTesting(false)
             }
+        }
+        // Paging the detail sheet with ←/→ drags the gallery's selection
+        // along, so dismissing leaves the user on the game they walked
+        // to rather than snapping back to where they opened it.
+        .onChange(of: detailEntryID) { _, id in
+            guard let id else {
+                // Card dismissed — take focus back, or space wouldn't
+                // reopen it.
+                focused = true
+                return
+            }
+            selection = [id]
+            anchor = id
+            cursor = id
+            scrollTarget = id
         }
         .onChange(of: system.id) { _, _ in
             selection.removeAll()
@@ -199,7 +229,9 @@ struct GalleryView: View {
                 Text(overwriteMessage(for: p))
             }
         }
+
     }
+
 
     @ViewBuilder
     private func galleryContent(containerWidth: CGFloat) -> some View {
@@ -241,7 +273,10 @@ struct GalleryView: View {
         .padding(pad)
         .background(
             GalleryBackgroundView(
-                onClick: { selection.removeAll() },
+                onClick: {
+                    focused = true
+                    selection.removeAll()
+                },
                 onDragChanged: { start, current, flags in
                     if marqueeStart == nil {
                         marqueeStart = start
@@ -285,7 +320,7 @@ struct GalleryView: View {
         case .software:
             switch entryMediaPreference {
             case .flyers: return FlyerAspectRatio.ratio(for: entry)
-            case .snap: return SnapAspectRatio.ratio(for: entry)
+            default: return SnapAspectRatio.ratio(for: entry)
             }
         }
     }
@@ -321,6 +356,12 @@ struct GalleryView: View {
             .overlay(
                 MouseEventView(
                     onClick: { clickCount, flags in
+                        // Clicking an NSView-backed tile clears SwiftUI's
+                        // focus, and `onKeyPress` only fires on the
+                        // focused view — so without this, space / ⌘I /
+                        // return / arrows all go dead the moment the user
+                        // picks a tile with the mouse.
+                        focused = true
                         if clickCount >= 2 {
                             library.launch(entry)
                         } else {
@@ -328,6 +369,7 @@ struct GalleryView: View {
                         }
                     },
                     onRightClick: {
+                        focused = true
                         if !selection.contains(entry.id) {
                             selection = [entry.id]
                             anchor = entry.id
@@ -377,6 +419,9 @@ struct GalleryView: View {
                 library.launch(entry)
             }
         } label: { Label("Launch", systemImage: "play.fill") }
+        Button {
+            detailEntryID = entry.id
+        } label: { Label("Show Details", systemImage: "info.circle") }
         Button {
             Task {
                 if selection.contains(entry.id), selection.count > 1 {
@@ -1143,7 +1188,7 @@ private struct EntryTile: View {
     private var tileAspectRatio: CGFloat {
         switch mediaKind {
         case .flyers: return FlyerAspectRatio.ratio(for: entry)
-        case .snap: return SnapAspectRatio.ratio(for: entry)
+        default: return SnapAspectRatio.ratio(for: entry)
         }
     }
 }

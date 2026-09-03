@@ -35,6 +35,10 @@ struct ContentView: View {
     @AppStorage("layoutMode") private var layoutMode: LayoutMode = .horizontalMasonry
     @State private var selection: SystemNode.ID?
     @State private var entrySelection: Set<Entry.ID> = []
+    /// Entry the detail card is showing, or nil when it's closed. Lives
+    /// here rather than in the gallery so the modal can dim the whole
+    /// window, sidebar included.
+    @State private var detailEntryID: Entry.ID?
     @State private var searchText: String = ""
     @State private var brewPromptShown: Bool = false
     @State private var sevenZipPromptShown: Bool = false
@@ -114,6 +118,32 @@ struct ContentView: View {
         return all.filter { entrySelection.contains($0.id) }
     }
 
+    /// Space / ⌘I. Opens the card on the selected entry, or closes it if
+    /// it's already up. With several entries selected it takes the first
+    /// in display order, the way Quick Look does — `entrySelection` is a
+    /// Set, so its own `first` would be arbitrary.
+    private func toggleEntryDetails() {
+        if detailEntryID != nil {
+            detailEntryID = nil
+            return
+        }
+        guard let node = currentNode, !entrySelection.isEmpty else { return }
+        detailEntryID = visibleEntries(for: node)
+            .first { entrySelection.contains($0.id) }?
+            .id
+    }
+
+    /// Exactly what the gallery is showing for `node` — same filters,
+    /// same order — so the detail card pages through what the user sees.
+    private func visibleEntries(for node: SystemNode) -> [Entry] {
+        library.filteredEntries(for: node,
+                                filter: EntryFilter(hideMissing: !showMissing,
+                                                    favoritesOnly: showFavoritesOnly,
+                                                    failingOnly: showFailingOnly,
+                                                    region: regionFilter,
+                                                    search: searchText))
+    }
+
     /// `nil` on cross-system nodes, where the profile picker is hidden.
     private var currentSystemToken: String? { currentNode?.kind.systemToken }
 
@@ -177,6 +207,15 @@ struct ContentView: View {
                 }
             }
         }
+        .overlay {
+            if detailEntryID != nil, let node = currentNode {
+                EntryDetailOverlay(system: node,
+                                   entries: visibleEntries(for: node),
+                                   entryID: $detailEntryID)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: detailEntryID != nil)
         .toolbar {
             ToolbarItem(id: "show-favorites", placement: .primaryAction) {
                 Toggle(isOn: $showFavoritesOnly) {
@@ -201,7 +240,7 @@ struct ContentView: View {
             }
             ToolbarItem(id: "media-kind", placement: .primaryAction) {
                 Picker("Media", selection: $mediaKind) {
-                    ForEach(MediaKind.allCases) { kind in
+                    ForEach(MediaKind.galleryCases) { kind in
                         Image(systemName: kind.systemImage).tag(kind)
                     }
                 }
@@ -322,15 +361,23 @@ struct ContentView: View {
             syncControllerScheme()
         }
         .onChange(of: selection) { _, new in
+            // The card pages within one system's list; switching systems
+            // out from under it would leave it on an entry that is no
+            // longer in that list.
+            detailEntryID = nil
             if let new { persistedSystemID = new }
             syncControllerScheme()
             // Clearing the search on system change matches Finder /
             // Mail / Notes — search scope is implicitly per-folder.
             searchText = ""
         }
+        .onReceive(NotificationCenter.default.publisher(for: AppNotification.toggleEntryDetails)) { _ in
+            toggleEntryDetails()
+        }
         .onAppear {
             restoreSelectionIfNeeded(in: sidebarSystems)
             syncControllerScheme()
+            SpaceKeyMonitor.install()
         }
     }
 
@@ -454,7 +501,8 @@ struct ContentView: View {
                         },
                         enableShowMissing: { showMissing = true },
                         searchText: $searchText,
-                        selection: $entrySelection)
+                        selection: $entrySelection,
+                        detailEntryID: $detailEntryID)
                 .id(node.id)
         } else {
             ContentUnavailableView("Select a system",
