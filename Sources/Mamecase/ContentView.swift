@@ -207,6 +207,8 @@ struct ContentView: View {
                 }
             }
         }
+        // Window-level, so the card centres on the whole window and dims
+        // the sidebar with it rather than sitting inside the detail pane.
         .overlay {
             if detailEntryID != nil, let node = currentNode {
                 EntryDetailOverlay(system: node,

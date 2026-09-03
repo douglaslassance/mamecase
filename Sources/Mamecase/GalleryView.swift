@@ -146,13 +146,18 @@ struct GalleryView: View {
         // Paging the detail sheet with ←/→ drags the gallery's selection
         // along, so dismissing leaves the user on the game they walked
         // to rather than snapping back to where they opened it.
-        .onChange(of: detailEntryID) { _, id in
+        .onChange(of: detailEntryID) { previous, id in
             guard let id else {
                 // Card dismissed — take focus back, or space wouldn't
                 // reopen it.
                 focused = true
                 return
             }
+            // Opening it: the card is showing what's already selected
+            // and on screen, so leave the gallery where it is. Only
+            // paging *inside* the card (previous was non-nil) drags the
+            // selection and the scroll along with it.
+            guard previous != nil else { return }
             selection = [id]
             anchor = id
             cursor = id
